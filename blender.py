@@ -212,15 +212,17 @@ class Blender:
         h_angles_deg = [deg for deg in np.linspace(0, 360, h_steps, endpoint=False)]
         # v_angles_deg = [v_angle for v_angle in np.linspace(v_min_deg, v_max_deg, v_steps)]
 
-        i:int = 1
+        i:int = 0
 
         for distance in distances:
             for v_angle_deg in v_angles_deg:
                 for h_angle_deg in h_angles_deg:
-                    id = f'{i:04d}'
-                    self.render_orbit_view(distance, h_angle_deg, v_angle_deg, height, id)
 
                     i += 1
+                    id = f'{i:04d}'
+                    self.render_orbit_view(distance, h_angle_deg, v_angle_deg, height, id)
+        
+        self.save_combined_depth_values([f'{j:04d}' for j in range(1, i+1)])
 
     """
     DEPTH FUNCTIONS
@@ -245,45 +247,63 @@ class Blender:
 
         np.save(os.path.join(self.output_dir, f'depth_{id}.npy'), depth_values)
 
-    def get_depth_values_at_pixel(self, id:str, v:int, u:int):
+    def save_combined_depth_values(self, ids: list[str], name: str = 'depth'):
+        "Combine depth value .npy files into a .npz file"
+
+        depth_values_dict = {}
+        for id in ids:
+            depth_values = np.load(os.path.join(self.output_dir, f'depth_{id}.npy'))
+            depth_values_dict[id] = depth_values
+
+        print(f"Saving combined depth values to {name}.npz")
+        np.savez(os.path.join(self.output_dir, name + '.npz'), **depth_values_dict)
+
+    def get_depth_values_at_pixel(self, id:str, v:int, u:int, source='npy'):
         "Get depth values at a specific pixel location"
 
-        depth_values = np.load(os.path.join(self.output_dir, f'depth_{id}.npy'))
+        if source == 'npy':
+            depth_values = np.load(os.path.join(self.output_dir, f'depth_{id}.npy'))
+
+        elif source == 'npz':
+            depth_values = np.load(os.path.join(self.output_dir, 'depth.npz'))[id]
+
         return depth_values[v, u]
 
 
 if __name__ == "__main__":
 
-    model = 'building'
+    model = 'notre dame'
 
-    output_directory = f'/Users/eric/Downloads/Blender/{model}/'
+    blender_dir = '/Users/eric/Library/Mobile Documents/com~apple~CloudDocs/Blender'
 
-    if model == 'building':
-        blend_file = '/Users/eric/Downloads/Blender/model.blend'
+    output_dir = f'{blender_dir}/renders/{model}/'
+
+    if model == 'notre dame':
+        blend_file = f'{blender_dir}/assets/models/notre dame/notre dame.blend'
         target_name = 'SketchUp'
         target_size = [149, 114, 94.2]
         distance = 250
         height = target_size[2]/2
 
-    if model == 'house':    
-        blend_file = '/Users/eric/Blender/assets/models/house luxury/house luxury.blend'
+    if model == 'house luxury':    
+        blend_file = f'{blender_dir}/assets/models/house luxury/house luxury.blend'
         target_name = 'House Luxury'
         target_size = [11.2, 11.3, 8]
         distance = 50
         height = target_size[2]/2
 
     if model == 'cube':
-        blend_file = '/Users/eric/Blender/assets/models/cube.blend'
+        blend_file = f'{blender_dir}/assets/models/cube.blend'
         target_name = 'Cube'
         target_size = [2, 2, 2]
         distance = 10
         height = 0
 
-    blender = Blender(blend_file, target_name=target_name, camera_name='Camera', output_dir=output_directory, target_size=target_size)
+    blender = Blender(blend_file, target_name=target_name, camera_name='Camera', output_dir=output_dir, target_size=target_size)
 
     blender.render(id='0000')
 
-    blender.render_orbit_views(distances=[distance], h_steps=12, v_angles_deg=[0,30], height=height)
+    blender.render_orbit_views(distances=[distance], h_steps=24, v_angles_deg=[0], height=height)
 
 
 # TODO
@@ -294,10 +314,6 @@ if __name__ == "__main__":
 # - automatically find output number assigned by render
 # - set start position (offset angle) for orbit view
 # - re-position camera relatively
-
-# o = bpy.context.object
-# local_bbox_center = 0.125 * sum((Vector(b) for b in o.bound_box), Vector())
-# global_bbox_center = o.matrix_world * local_bbox_center
 
 # When rendering images, Blender assigns a number to the image file name
 # How can I get this number to save the camera pose and depth values with the same number?
