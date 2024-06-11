@@ -1,0 +1,3 @@
+[submodule "deep-image-retrieval"]
+	path = deep-image-retrieval
+	url = https://github.com/naver/deep-image-retrieval.git
