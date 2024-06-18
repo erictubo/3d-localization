@@ -4,6 +4,10 @@ import numpy as np
 from math import pi, sqrt, atan2
 from mathutils import Vector, Quaternion
 
+from typing import Dict, Tuple, List, Optional, Union
+from pathlib import Path
+
+
 
 class Blender:
 
@@ -13,9 +17,12 @@ class Blender:
                  camera_name: str,
                  output_dir: str,
                  target_size: list[float],
+                 resolution: tuple[int] = (1024, 1024),
+                 depth_rendering: bool = True,
+                 edge_rendering: bool = False
                  ):
         
-        # Load CAD model
+        # TODO: Directly load CAD model
         # bpy.ops.import_scene.obj(filepath='path_to_your_model.obj')
 
         # Open existing blend file
@@ -31,37 +38,106 @@ class Blender:
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
+        # TODO: automatically get target size (e.g. via bounding box)
         self.target_size = target_size
         self.diagonal = sqrt(sum([s**2 for s in target_size]))
 
-        self.prepare_depth_rendering()
-        # self.prepare_edge_rendering()
+        bpy.context.scene.render.resolution_x = resolution[0]
+        bpy.context.scene.render.resolution_y = resolution[1]
+        
+        self.depth_rendering = depth_rendering
+        if self.depth_rendering:
+            self.prepare_depth_rendering()
+
+        self.edge_rendering = edge_rendering
+        if self.edge_rendering:
+            self.prepare_edge_rendering()
+
 
     """
     CAMERA FUNCTIONS
+    - Intrinsics
+        - Get
+        - Set
+    - Pose: absolute, relative, orbit
+        - Get
+        - Set
+        - Save
+        - Retrieve
     """
-    
-    def set_camera_intrinsics(self, focal_length, sensor_width, sensor_height):
 
-        self.camera.data.lens = focal_length
-        self.camera.data.sensor_width = sensor_width
-        self.camera.data.sensor_height = sensor_height
-    
-    def get_camera_intrinsics(self):
-
+    def get_camera_intrinsics(self) -> tuple[float, int, int]:
+        """
+        Get camera intrinsics (focal_length, sensor_width, sensor_height).
+        """
         focal_length = self.camera.data.lens
         sensor_width = self.camera.data.sensor_width
         sensor_height = self.camera.data.sensor_height
 
         return focal_length, sensor_width, sensor_height
+    
+    def set_camera_intrinsics(self, fov_deg: float, sensor_width: int, sensor_height: int):
+        """
+        Set camera intrinsics (focal_length, sensor_width, sensor_height).
+        """
+        self.camera.data.lens_unit = 'FOV'
+        self.camera.data.angle = fov_deg * pi/180
+        self.camera.data.sensor_width = sensor_width
+        self.camera.data.sensor_height = sensor_height
 
-    def set_camera_pose(self, distance, h_angle, v_angle, height):
+        bpy.context.scene.render.resolution_x = sensor_width
+        bpy.context.scene.render.resolution_y = sensor_height
 
-        print("Camera:", self.camera.location, self.camera.rotation_quaternion)
+    def get_camera_pose(self) -> np.ndarray:
+        """
+        Get camera pose (px, py, pz, qx, qy, qz, qw).
+        """
+        px, py, pz = self.camera.location
+        qx, qy, qz, qw = self.camera.rotation_quaternion
+        pose = np.array([px, py, pz, qx, qy, qz, qw])
+
+        return pose
+
+    def set_camera_pose(self, pose: np.ndarray):
+        """
+        Set camera pose (px, py, pz, qx, qy, qz, qw) in world coordinates.
+        """
+        px, py, pz, qw, qx, qy, qz = pose
+
+        self.camera.location = Vector((px, py, pz))
+        self.camera.rotation_quaternion = Quaternion((qw, qx, qy, qz))
+
+    def save_camera_pose(self, id: str):
+        """
+        Save current camera pose as text file.
+        """
+        pose = self.get_camera_pose()
+
+        # write pose to file with space separated values
+        with open(os.path.join(self.output_dir, f'pose_{id}.txt'), 'w') as f:
+            f.write(' '.join(map(str, pose)))
+
+    def retrieve_camera_pose(self, id:str) -> np.ndarray:
+        """
+        Retrieve camera pose from text file.
+        """
+        with open(os.path.join(self.output_dir, f'pose_{id}.txt'), 'r') as f:
+            pose = f.read().split()
+            pose = np.array([float(p) for p in pose])
+        
+        return pose
+
+    def set_camera_orbit_pose(self, distance: float, h_angle: float, v_angle: float, height: float):
+        """
+        Set camera pose in orbit view around target object.
+        Parameters:
+        - distance: distance from target object
+        - h_angle: horizontal angle in radians
+        - v_angle: vertical angle in radians
+        - height: height above target object
+        """
 
         tx, ty, tz = self.target.location + Vector((0, 0, height))
-
-        print("Target:", tx, ty, tz)
     
         h_axis = Vector((0, 0, 1))
         h_quat = Quaternion(h_axis, h_angle)
@@ -79,27 +155,38 @@ class Blender:
         direction.normalize()
         quat_to_target = direction.to_track_quat('-Z', 'Y')
         self.camera.rotation_quaternion = quat_to_target
-    
-    def get_camera_pose(self):
-        "get camera pose as distance, h_angle, v_angle, height with respect to target"
+
+    def rotate_camera(roll: float, pitch: float, yaw: float):
+        """
+        Rotate camera around itself.
+        """
+        # Angles are interdependent, so sequence matters.
         pass
 
-    def save_camera_pose(self, id:str, format='quaternion'):
-        "save camera pose as text file with px, py, pz, qx, qy, qz, qw"
+    def rotate_camera_relative_to_target(h_angle: float, v_angle: float, roll: float):
+        """
+        Rotate camera relative to target object.
+        """
+        pass
 
-        if format == 'quaternion':
-            px, py, pz = self.camera.location
-            qx, qy, qz, qw = self.camera.rotation_quaternion
-            pose = [px, py, pz, qx, qy, qz, qw]
-            pose = ' '.join(map(str, pose))
-            with open(os.path.join(self.output_dir, f'pose_{id}.txt'), 'w') as f:
-                f.write(pose)
+    def reposition_camera_relative_to_target(distance: float, height: float, ):
+        """
+        Reposition camera relative to target object.
+        """
+        pass
+
 
     """
     RENDERING FUNCTIONS
     """
 
     def prepare_depth_rendering(self):
+        """
+        Prepare settings for depth rendering:
+        - Enable depth pass
+        - Create map range node to normalize depth
+        - Create output nodes for depth image
+        """
         view_layer = bpy.context.scene.view_layers[0]
         view_layer.use_pass_z = True
 
@@ -134,6 +221,13 @@ class Blender:
         links.new(self.map_range_node.outputs[0], self.depth_output.inputs[0])
     
     def prepare_edge_rendering(self):
+        """
+        Prepare settings for edge rendering:
+        - Enable Freestyle rendering
+        - Set line thickness
+        - Create Freestyle line set
+        - Create output nodes for edge image
+        """
         scene = bpy.context.scene
         scene.render.use_freestyle = True
         scene.render.line_thickness_mode = 'ABSOLUTE'
@@ -176,13 +270,22 @@ class Blender:
         links.new(freestyle_render_layers.outputs['Freestyle'], self.edges_output.inputs[0])
     
     def render(self, id:str):
+        """
+        Render images (+ depth and edges if enabled), save camera pose and depth values.
+        """
 
+        # Image rendering
         image_file = os.path.join(self.output_dir, 'image_' + id)
         bpy.context.scene.render.filepath = image_file
 
-        # Depth
+        # Depth rendering
         self.depth_output.file_slots[0].path = 'depth_' + id
 
+        # Edge rendering
+        if self.edge_rendering:
+            self.edges_output.file_slots[0].path = 'edges_' + id
+
+        # Set depth range based on distance to target
         tx, ty, tz = self.target.location
         cx, cy, cz = self.camera.location
         distance = ((tx - cx)**2 + (ty - cy)**2 + (tz - cz)**2)**0.5
@@ -191,29 +294,28 @@ class Blender:
         self.map_range_node.inputs['From Min'].default_value = min_depth
         self.map_range_node.inputs['From Max'].default_value = max_depth
         
-        # self.edges_output.file_slots[0].path = 'edges_' + id
-        
         bpy.ops.render.render(write_still=True)
-        self.save_camera_pose(id)
+        
+        # Save depth values and camera pose
         self.save_depth_values(id)
-
-        print(f"Distance: {round(distance)}, Min Depth: {min_depth}, Max Depth: {max_depth}")
-
-        print("Camera:", self.camera.location, self.camera.rotation_quaternion)
+        self.save_camera_pose(id)
 
     def render_orbit_view(self, distance: int, h_angle_deg: int, v_angle_deg: int, height: int, id: str):
+        """
+        Render orbit view at a specific distance, horizontal and vertical angle (deg).
+        """
         h_angle = h_angle_deg * pi/180
         v_angle = v_angle_deg * pi/180
-        self.set_camera_pose(distance, h_angle, v_angle, height)
+        self.set_camera_orbit_pose(distance, h_angle, v_angle, height)
         self.render(id)
 
     def render_orbit_views(self, distances: list[int], h_steps: int, v_angles_deg: list[int], height: int):
-
+        """
+        Render orbit views at multiple distances, horizontal and vertical angles (deg).
+        """
         h_angles_deg = [deg for deg in np.linspace(0, 360, h_steps, endpoint=False)]
-        # v_angles_deg = [v_angle for v_angle in np.linspace(v_min_deg, v_max_deg, v_steps)]
 
         i:int = 0
-
         for distance in distances:
             for v_angle_deg in v_angles_deg:
                 for h_angle_deg in h_angles_deg:
@@ -224,12 +326,15 @@ class Blender:
         
         self.save_combined_depth_values([f'{j:04d}' for j in range(1, i+1)])
 
+
     """
     DEPTH FUNCTIONS
     """
     
     def save_depth_values(self, id:str):
-        "Calculate actual depth values from depth image and store in numpy array"
+        """
+        Calculate actual depth values from depth image and store in numpy array.
+        """
 
         white = self.map_range_node.inputs['From Min'].default_value
         black = self.map_range_node.inputs['From Max'].default_value
@@ -247,9 +352,10 @@ class Blender:
 
         np.save(os.path.join(self.output_dir, f'depth_{id}.npy'), depth_values)
 
-    def save_combined_depth_values(self, ids: list[str], name: str = 'depth'):
-        "Combine depth value .npy files into a .npz file"
-
+    def save_combined_depth_values(self, ids: List[str], name: str = 'depth'):
+        """
+        Combine depth values NPY files per image into a single NPZ file for all images.
+        """
         depth_values_dict = {}
         for id in ids:
             depth_values = np.load(os.path.join(self.output_dir, f'depth_{id}.npy'))
@@ -258,9 +364,10 @@ class Blender:
         print(f"Saving combined depth values to {name}.npz")
         np.savez(os.path.join(self.output_dir, name + '.npz'), **depth_values_dict)
 
-    def get_depth_values_at_pixel(self, id:str, v:int, u:int, source='npy'):
-        "Get depth values at a specific pixel location"
-
+    def get_depth_values_at_pixel(self, id:str, v:int, u:int, source='npy') -> float:
+        """
+        Get depth value at a specific pixel location.
+        """
         if source == 'npy':
             depth_values = np.load(os.path.join(self.output_dir, f'depth_{id}.npy'))
 
@@ -278,42 +385,126 @@ if __name__ == "__main__":
 
     output_dir = f'{blender_dir}/renders/{model}/'
 
+    # if model == 'house luxury':    
+    #     blend_file = f'{blender_dir}/assets/models/house luxury/house luxury.blend'
+    #     target_name = 'House Luxury'
+    #     target_size = [11.2, 11.3, 8]
+    #     distance = 50
+    #     height = target_size[2]/2
+
+    # if model == 'cube':
+    #     blend_file = f'{blender_dir}/assets/models/cube.blend'
+    #     target_name = 'Cube'
+    #     target_size = [2, 2, 2]
+    #     distance = 10
+    #     height = 0
+
     if model == 'notre dame':
         blend_file = f'{blender_dir}/assets/models/notre dame/notre dame.blend'
         target_name = 'SketchUp'
-        target_size = [149, 114, 94.2]
-        distance = 250
+        target_size = [149, 114, 94.2] # [m]
+        distances = [100, 150, 200] # [m]
+        h_steps = 24 # 260/24 = 15 [deg]
+        v_angles_deg = [-15, 0, 15] # [deg]
         height = target_size[2]/2
 
-    if model == 'house luxury':    
-        blend_file = f'{blender_dir}/assets/models/house luxury/house luxury.blend'
-        target_name = 'House Luxury'
-        target_size = [11.2, 11.3, 8]
-        distance = 50
-        height = target_size[2]/2
 
-    if model == 'cube':
-        blend_file = f'{blender_dir}/assets/models/cube.blend'
-        target_name = 'Cube'
-        target_size = [2, 2, 2]
-        distance = 10
-        height = 0
+    # TODO: Run for multiple models
+    # - import each
+    # - set file paths & parameters
+    
+    models = ['B', 'C', 'D', 'E', 'F', 'G']
+    for model in models:
+        pass
 
     blender = Blender(blend_file, target_name=target_name, camera_name='Camera', output_dir=output_dir, target_size=target_size)
 
-    blender.render(id='0000')
+    # blender.render(id='0000')
 
-    blender.render_orbit_views(distances=[distance], h_steps=24, v_angles_deg=[0], height=height)
+    # blender.render_orbit_views(
+    #     distances=distances,
+    #     h_steps=h_steps,
+    #     v_angles_deg=v_angles_deg,
+    #     height=height)
 
 
-# TODO
-# - set camera instrinsics of blender camera to match real camera
-# - automatically set depth range based on actual depth range
-# - set bounding box of target object to automatically get target size (see code below)
-# - position target to ground & rotate to align with axes
-# - automatically find output number assigned by render
-# - set start position (offset angle) for orbit view
-# - re-position camera relatively
 
-# When rendering images, Blender assigns a number to the image file name
-# How can I get this number to save the camera pose and depth values with the same number?
+    def retrieve_query_data(path_to_outputs: Path, query_name: str) -> Tuple[Tuple[str, np.ndarray, int, int], np.ndarray]:
+        """
+        Retrieve query data (intrinsics, pose) from file.
+        """
+        with open(path_to_outputs / query_name.replace('.jpg', '.txt').replace('query/',''), 'r') as f:
+            data = f.readlines()
+            camera_model = data[0].strip()
+            params = np.array(data[1].strip().split(), dtype=float)
+            w, h = map(int, data[2].strip().split())
+            pose = np.array(data[3].strip().split(), dtype=float)
+            assert pose.shape == (7,), pose.shape
+
+        return (camera_model, params, w, h), pose
+
+
+    def get_field_of_view(camera_model: str, camera_params: np.ndarray, w: int, h: int) -> float:
+        """
+        Compute field of view (FoV) in degrees.
+        """
+        if camera_model == 'PINHOLE':
+            assert camera_params.shape == (4,), camera_params.shape
+            fx, fy, cx, cy = camera_params
+
+            if w > h:   # FoV along horizontal axis
+                fov = 2 * np.arctan(w / (2 * fx))
+                fov_deg = fov * 180/pi
+
+            else:       # FoV along vertical axis
+                fov = 2 * np.arctan(h / (2 * fy))
+                fov_deg = fov * 180/pi
+        else:
+            raise ValueError(f"Camera model {camera_model} not implemented.")
+
+        return fov_deg
+
+    path_to_dataset = Path('/Users/eric/Downloads/evaluation/model_B/')
+    path_to_images = path_to_dataset / 'images/'
+    path_to_outputs = path_to_dataset / 'outputs/'
+
+
+    query_names = [f.name for f in path_to_images.glob('query/*.jpg')]
+
+    for query_name in query_names:
+        (camera_model, camera_params, w, h), pose = retrieve_query_data(path_to_outputs / 'query_data/', query_name)
+        print('Camera model:', camera_model)
+        print('Camera params:', camera_params)
+        print('Image size:', w, h)
+        print('Pose:', pose)
+
+        fov = get_field_of_view(camera_model, camera_params, w, h)
+
+        print(f"Query: {query_name}, FoV: {fov:.2f} deg")
+
+        blender.set_camera_pose(pose)
+        blender.set_camera_intrinsics(fov, w, h)
+
+        id = f'test_{query_name.replace(".jpg", "")}'
+        blender.render(id=id)
+
+
+        # TODO: combine rendered image with query image
+
+        query_image = bpy.data.images.load(str(path_to_images / query_name))
+        rendered_image = bpy.data.images.load(str(output_dir / f'image_{id}.png'))
+
+
+
+
+
+# TODO: split this script
+# 1. rendering of database images
+# 2. rendering of query images to match with database images
+# 3. export common functions into other class (Blender)
+
+# TODO: run Blender code without task configuration
+    
+
+        
+
