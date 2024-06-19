@@ -14,9 +14,9 @@ class RenderBlender:
 
     def __init__(self,
                  blend_file: str,
-                 target_name: str,
-                 camera_name: str,
                  output_dir: str,
+                 target_name: str,
+                 camera_name: str = 'Camera',
                 #  target_size: 'list[float]',
                  resolution: 'tuple[int]' = (1024, 1024),
                  depth_rendering: bool = True,
@@ -41,8 +41,6 @@ class RenderBlender:
 
         self.center = self.find_target_center()
         self.target_size, self.diagonal = self.find_target_size()
-
-        print(self.target_size)
 
         bpy.context.scene.render.resolution_x = resolution[0]
         bpy.context.scene.render.resolution_y = resolution[1]
@@ -314,8 +312,9 @@ class RenderBlender:
         depth_values[depth_values != np.inf] = depth_values[depth_values != np.inf] * (white - black) + black
 
         assert depth_values.shape == (depth_image.size[1], depth_image.size[0])
-        assert depth_values.min() > white
+        # assert depth_values.min() > white
         # assert depth_values[depth_values != np.inf].max() < black
+        depth_values[(depth_values < black) | (depth_values > white)] = np.NaN
 
         np.save(os.path.join(self.output_dir, f'depth_{id}.npy'), depth_values)
 
@@ -409,11 +408,11 @@ class RenderBlender:
         
         self.save_combined_depth_values([f'{j:04d}' for j in range(1, i+1)])
 
-    def retrieve_query_data(path_to_outputs: Path, query_name: str) -> Tuple[Tuple[str, np.ndarray, int, int], np.ndarray]:
+    def retrieve_query_data(self, path_to_outputs: Path, query_name: str) -> Tuple[Tuple[str, np.ndarray, int, int], np.ndarray]:
         """
         Retrieve query data (intrinsics, pose) from file.
         """
-        with open(path_to_outputs + query_name.replace('.jpg', '.txt').replace('query/',''), 'r') as f:
+        with open(str(path_to_outputs) + '/' + 'query_data/' + query_name.replace('.jpg', '.txt').replace('query/',''), 'r') as f:
             data = f.readlines()
             camera_model = data[0].strip()
             params = np.array(data[1].strip().split(), dtype=float)
@@ -423,7 +422,7 @@ class RenderBlender:
 
         return (camera_model, params, w, h), pose
 
-    def get_field_of_view_from_intrinsics(camera_model: str, camera_params: np.ndarray, w: int, h: int) -> float:
+    def get_field_of_view_from_intrinsics(self, camera_model: str, camera_params: np.ndarray, w: int, h: int) -> float:
         """
         Compute field of view (FoV) in degrees.
         """
@@ -443,14 +442,16 @@ class RenderBlender:
 
         return fov_deg
     
-    def render_query_poses(self, path_to_images: Path, path_to_outputs: Path):
+    def render_query_poses(self, images_dir: str, outputs_dir: str):
         """
         Render query images with pose and intrinsics.
         """
+        path_to_images = Path(images_dir)
+        path_to_outputs = Path(outputs_dir)
         query_names = [f.name for f in path_to_images.glob('query/*.jpg')]
 
         for query_name in query_names:
-            (camera_model, camera_params, w, h), pose = self.retrieve_query_data(path_to_outputs / 'query_data/', query_name)
+            (camera_model, camera_params, w, h), pose = self.retrieve_query_data(path_to_outputs, query_name)
             print('Camera model:', camera_model)
             print('Camera params:', camera_params)
             print('Image size:', w, h)
@@ -487,12 +488,12 @@ if __name__ == "__main__":
         #     'target_size': [11.2, 11.3, 8],
         #     'distances': [50],
         # },
-        # 'notre dame B':{
-        #     'blend_file': f'{blender_dir}assets/models/notre dame B/notre dame B.blend',
-        #     'target_name': 'SketchUp',
-        #     'target_size': [149, 114, 94.2],
-        #     'distances': [100, 150, 200],
-        # },
+        'notre dame B':{
+            'blend_file': f'{blender_dir}assets/models/notre dame B/notre dame B.blend',
+            'target_name': 'SketchUp',
+            'target_size': [149, 114, 94.2],
+            'distances': [100, 150, 200],
+        },
         # 'notre dame C':{
         #     'blend_file': f'{blender_dir}/assets/models/notre dame/notre dame C.blend',
         #     'target_name': 'SketchUp',
@@ -517,42 +518,23 @@ if __name__ == "__main__":
 
         blend_file = models[model]['blend_file']
         target_name = models[model]['target_name']
-        # target_size = models[model]['target_size']
         distances = models[model]['distances']
-        
-        # height = target_size[2]/2
 
-
-        blender = RenderBlender(
-            blend_file,
-            target_name=target_name,
-            camera_name='Camera',
-            output_dir=output_dir,
-            # target_size=target_size,
-            )
-        
-
+        blender = RenderBlender(blend_file, output_dir, target_name)
 
         # blender.render(id='0000')
 
-        blender.render_orbit_views(
-            distances=distances,
-            h_steps=h_steps,
-            v_angles_deg=v_angles_deg,
-            )
-
-
-        # path_to_dataset = path_to_evaluation / model / '/'
-        # path_to_images = path_to_dataset / 'images/'
-        # path_to_outputs = path_to_dataset / 'outputs/'
-        
-        # blender.render_query_poses(
-        #     path_to_images=path_to_images,
-        #     path_to_outputs=path_to_outputs,
+        # blender.render_orbit_views(
+        #     distances=distances,
+        #     h_steps=h_steps,
+        #     v_angles_deg=v_angles_deg,
         #     )
 
-
-
+        dataset_dir = evaluation_dir + f'{model}/'
+        images_dir = dataset_dir + 'inputs/'
+        outputs_dir = dataset_dir + 'outputs/'
+        
+        blender.render_query_poses(images_dir, outputs_dir)
 
 
 # TODO: why are some images so different?
@@ -562,7 +544,5 @@ if __name__ == "__main__":
     # - inaccuracy in data?
 
 # TODO: run Blender code without task configuration
-    
-
-        
+    # -> integrate with other files
 
