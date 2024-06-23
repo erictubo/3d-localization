@@ -8,8 +8,10 @@ from types import SimpleNamespace
 from hloc import extract_features, match_features, pairs_from_retrieval
 from hloc.utils.io import read_image, get_keypoints, get_matches
 
-# import os
-# os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+"""
+FEATURES
+Global and local feature extraction and matching.
+"""
 
 
 class Features:
@@ -17,7 +19,7 @@ class Features:
     def __init__(
             self,
             path_to_images: Path,
-            path_to_outputs: Path,
+            path_to_features: Path,
             path_to_retrieval_pairs: Path,
             global_feature_conf_name: str,
             global_num_matched: int,
@@ -27,9 +29,12 @@ class Features:
             query_prefix: str = 'query'
         ):
 
-        # Path to images and outputs directory
+        # Path to images
         self.path_to_images = path_to_images
-        self.path_to_outputs = path_to_outputs
+
+        # Path to features
+        self.path_to_features = path_to_features
+        if not path_to_features.exists(): path_to_features.mkdir()
 
         # Path to retrieval pairs file
         self.path_to_retrieval_pairs = path_to_retrieval_pairs
@@ -70,7 +75,7 @@ class Features:
         self.path_to_global_descriptors = extract_features.main(
             conf=self.global_feature_conf,
             image_dir=self.path_to_images,
-            export_dir=self.path_to_outputs,
+            export_dir=self.path_to_features,
         )        
 
         pairs_from_retrieval.main(
@@ -90,14 +95,14 @@ class Features:
         self.path_to_local_features = extract_features.main(
             conf=self.local_feature_conf,
             image_dir=self.path_to_images,
-            export_dir=self.path_to_outputs,
+            export_dir=self.path_to_features,
         )    
 
         self.path_to_local_matches = match_features.main(
             conf=self.local_match_conf,
             pairs=self.path_to_retrieval_pairs,
             features=self.local_feature_conf['output'],
-            export_dir=self.path_to_outputs,
+            export_dir=self.path_to_features,
         )
 
 
