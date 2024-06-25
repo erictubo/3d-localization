@@ -6,6 +6,8 @@ from transformations import decompose_matrix, compose_matrix
 from typing import Tuple, Dict, List
 import collections
 from matplotlib import pyplot as plt
+import OpenEXR
+import Imath
 
 from transformation import pose_to_matrix, matrix_to_pose, invert_pose, invert_matrix
 from hloc.utils.read_write_model import write_cameras_binary, write_images_binary, CAMERA_MODEL_NAMES
@@ -81,7 +83,7 @@ class CadData:
 
         return pose_cad_cam
 
-    def write_render_data_in_colmap_format(
+    def convert_render_data_to_colmap_format(
             self,
             f_mm: float = 50,
             image_size: Tuple[int, int] = (1024, 1024),
@@ -144,6 +146,41 @@ class CadData:
         write_images_binary(images, self.path_to_database / 'images.bin')
 
     @staticmethod
+    def convert_depth_map_from_exr_to_npz(path_to_depth: Path, name: str):
+        """
+        Convert EXR depth maps to NPZ format.
+        """
+        name = name.split('.')[0]
+        if not name.endswith('_depth'):
+            name += '_depth'
+        depth_name = name + '.exr'
+
+        file = OpenEXR.InputFile(str(path_to_depth / depth_name))
+
+        # Get the header and data window
+        dw = file.header()['dataWindow']
+        size = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1)
+
+        # Read the depth channel
+        depth_str = file.channel('V', Imath.PixelType(Imath.PixelType.FLOAT))
+        depth = np.frombuffer(depth_str, dtype=np.float32)
+        depth = depth.reshape(size[1], size[0])
+
+        # Set background to zero
+        depth = np.where(depth < 1000, depth, 0)
+
+        depth_values_dict = {}
+        depth_values_dict['depth'] = depth        
+        np.savez_compressed(path_to_depth / (name + '.npz'), **depth_values_dict)
+
+    def convert_depth_maps_from_exr_to_npz(self):
+        """
+        Convert all EXR depth maps to NPZ format.
+        """
+        for image_name in self.image_names:
+            self.convert_depth_map_from_exr_to_npz(self.path_to_depth, image_name)
+
+    @staticmethod
     def visualize_depth_map(path_to_depth: Path, name: str, out: str = 'show'):
         """
         Visualize npy/npz depth map with colors according to depth values and a legend.
@@ -200,16 +237,9 @@ class CadData:
 if __name__ == '__main__':
 
     path_to_depth = Path('/Users/eric/Downloads/evaluation/notre_dame_B/inputs/database/depth/')
-    name = '0001'
 
-    CadData.visualize_depth_map(path_to_depth, name)
+    names = ['0001_depth', '0002_depth', '0003_depth']
 
-    path_to_depth = Path('/Users/eric/Downloads/evaluation/notre_dame_E/inputs/database/depth/')
-    name = '0030'
+    for name in names:
 
-    CadData.visualize_depth_map(path_to_depth, name)
-
-    path_to_depth = Path('/Users/eric/Developer/meshloc_dataset/aachen_day_night_v11/db_renderings/AC14_depth_800_undist')
-    name = 'db_13'
-
-    CadData.visualize_depth_map(path_to_depth, name)    
+        CadData.visualize_depth_map(path_to_depth, name)

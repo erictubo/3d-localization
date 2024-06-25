@@ -80,7 +80,8 @@ if __name__ == '__main__':
             sfm_data.write_query_poses_text_file(path_to_ground_truth, query_names)
 
             cad_data = CadData(path_to_ground_truth, path_to_database)
-            cad_data.write_render_data_in_colmap_format()
+            cad_data.convert_render_data_to_colmap_format()
+            cad_data.convert_depth_maps_from_exr_to_npz()
 
 
 
