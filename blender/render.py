@@ -290,25 +290,15 @@ class Blender:
         # Create render layers node
         self.render_layers = tree.nodes.new(type="CompositorNodeRLayers")
 
-        # Create map range node to normalize depth
-        self.map_range_node = tree.nodes.new(type="CompositorNodeMapRange")
-        # self.map_range_node.inputs['From Min'].default_value = min_depth
-        # self.map_range_node.inputs['From Max'].default_value = max_depth
-        self.map_range_node.inputs['To Min'].default_value = 1.0
-        self.map_range_node.inputs['To Max'].default_value = 0.0
-
         # Create output nodes for depth image
         self.depth_output = tree.nodes.new(type="CompositorNodeOutputFile")
-        self.depth_output.label = "Depth Output"
         self.depth_output.base_path = self.depth_dir
         self.depth_output.file_slots[0].path = "####"
-        self.depth_output.format.file_format = 'PNG'
-        self.depth_output.format.color_mode = 'BW'
+        self.depth_output.format.file_format = 'OPEN_EXR'
 
         # Link nodes
-        links.new(self.render_layers.outputs['Depth'], self.map_range_node.inputs[0])
-        links.new(self.map_range_node.outputs[0], self.depth_output.inputs[0])
-    
+        links.new(self.render_layers.outputs['Depth'], self.depth_output.inputs[0])
+
     def prepare_edge_rendering(self):
         """
         Prepare settings for edge rendering.
@@ -356,121 +346,6 @@ class Blender:
 
 
     """
-    DEPTH FUNCTIONS
-    """
-
-    def set_depth_range(self):
-        """
-        Set depth range for rendering based on distance to target and diagonal.
-        """
-        # distance = sqrt(sum((self.target_center-self.camera.location) * (self.target_center-self.camera.location)))
-        distance = (self.target_center - self.camera.location).length
-        min_depth = round(distance - self.target_diagonal/2 -1)
-        min_depth = max(min_depth, 0)
-        max_depth = round(distance + self.target_diagonal/2 +1)
-
-        self.map_range_node.inputs['From Min'].default_value = min_depth
-        self.map_range_node.inputs['From Max'].default_value = max_depth
-
-    def save_depth_values_from_depth_image(self, id : str, format: str='npz', at_inf: int = 0):
-        """
-        Calculate actual depth values from depth image and store in numpy array.
-        """
-        white = self.map_range_node.inputs['From Min'].default_value
-        black = self.map_range_node.inputs['From Max'].default_value
-
-        depth_image = bpy.data.images.load(os.path.join(self.depth_dir, f'{id}0027.png'))
-        depth_values = np.array(depth_image.pixels[:]).reshape(depth_image.size[1], depth_image.size[0], 4)
-
-        depth_values = depth_values[:, :, 0]
-        # black: 0 = far away
-        depth_values[depth_values == 0] = at_inf
-        # everything else: scale according to white (close) and black (far away)
-        depth_values[depth_values != at_inf] = depth_values[depth_values != at_inf] * (white - black) + black
-
-        # check that depth values size is the same as the image size
-        assert depth_values.shape == (depth_image.size[1], depth_image.size[0]), \
-            depth_values.shape
-        
-        # check that depth values are within the white and black range
-        if depth_values[depth_values != at_inf].size > 0:
-            assert depth_values[depth_values != at_inf].min() > white, \
-                f"Min depth value {depth_values.min()} less than white value {white}"
-            assert depth_values[depth_values != at_inf].max() < black, \
-                f"Max depth value {depth_values[depth_values != at_inf].max()} exceeds black value {black}"
-        else:
-            print("All depth values are infinity")
-        
-        # depth_values[depth_values < white] = np.NaN
-        # depth_values[(depth_values != at_inf) & (depth_values < black)] = np.NaN
-
-        # invert the rows of the depth values
-        depth_values = np.flip(depth_values, 0)
-
-        if format == 'npy':
-            np.save(os.path.join(self.depth_dir, f'{id}_depth.npy'), depth_values)
-
-        elif format == 'npz':
-            depth_values_dict = {}
-            depth_values_dict['depth'] = depth_values
-            np.savez(os.path.join(self.depth_dir, f'{id}_depth.npz'), **depth_values_dict)
-
-    # def save_depth_image_from_depth_values(self, id: str, format: str='npz', at_inf: int = 0):
-    #     """
-    #     Visualize depth values as an image and save.
-    #     """
-    #     depth_values = np.load(os.path.join(self.depth_dir, f'{id}_depth.{format}'))
-
-    #     black = 0
-    #     white = 1
-
-    #     # set at_inf values to black (0)
-    #     depth_values[depth_values == at_inf] = black
-
-    #     # opposite to this: depth_values[depth_values != at_inf] = depth_values[depth_values != np.inf] * (white - black) + black
-    #     # normalize depth values to [0, 1]
-    #     depth_values[depth_values != at_inf] = (depth_values[depth_values != at_inf] - black) / (white - black)
-
-    #     # reshape to image with 4 channels (RGBA)
-    #     depth_image = np.zeros((depth_values.shape[0], depth_values.shape[1], 4))
-    #     depth_image[:, :, 0] = depth_values
-    #     depth_image[:, :, 1] = depth_values
-    #     depth_image[:, :, 2] = depth_values
-    #     depth_image[:, :, 3] = 1
-
-    #     # create image object and save
-    #     depth_image = bpy.data.images.new(f'{id}_depth', depth_values.shape[1], depth_values.shape[0])
-    #     depth_image.pixels = depth_image.pixels[:] = depth_image.ravel()
-    #     depth_image.filepath_raw = os.path.join(self.depth_dir, f'{id}_depth.png')
-    #     depth_image.file_format = 'PNG'
-    #     depth_image.save()
-
-    # def save_combined_depth_values(self, ids: List[str], name: str = 'depth'):
-    #     """
-    #     Combine depth values NPY files per image into a single NPZ file for all images.
-    #     """
-    #     depth_values_dict = {}
-    #     for id in ids:
-    #         depth_values = np.load(os.path.join(self.depth_dir, f'{id}.npy'))
-    #         depth_values_dict[id] = depth_values
-
-    #     print(f"Saving combined depth values to {name}.npz")
-    #     np.savez(os.path.join(self.depth_dir, name + '.npz'), **depth_values_dict)
-
-    def get_depth_value_at_pixel(self, id:str, v:int, u:int, source='npy') -> float:
-        """
-        Get depth value at a specific pixel location.
-        """
-        if source == 'npy':
-            depth_values = np.load(os.path.join(self.depth_dir, f'{id}.npy'))
-
-        elif source == 'npz':
-            depth_values = np.load(os.path.join(self.depth_dir, 'combined.npz'))[id]
-
-        return depth_values[v, u]
-    
-
-    """
     RENDERING
     """
     
@@ -478,8 +353,6 @@ class Blender:
         """
         Render images (+ depth and edges if enabled), save camera pose and depth values.
         """
-        self.set_depth_range()
-
         image_file = os.path.join(self.images_dir, f'{id}.png')
         bpy.context.scene.render.filepath = image_file
 
@@ -489,8 +362,6 @@ class Blender:
         self.depth_output.file_slots[0].path = id
 
         bpy.ops.render.render(write_still=True)
-
-        self.save_depth_values_from_depth_image(id, 'npz')
 
         self.write_camera_pose(id)
 
@@ -532,9 +403,16 @@ class Blender:
                     self.render_orbit_view(h_angle_deg, v_angle_deg, distance, id)
 
         print(f"Rendered {i} images")
-        
-        # self.save_combined_depth_values([f'{j:04d}' for j in range(1, i+1)])        
 
+        self.write_intrinsics_to_file()
+    
+    def write_intrinsics_to_file(self):
+        """
+        Save camera intrinsics to a text file.
+        """
+        w, h, f = self.get_camera_intrinsics('mm')
+        with open(os.path.join(self.render_dir, f'intrinsics.txt'), 'w') as file:
+            file.write(f'{w} {h} {f}')
 
 
 # TODO: incorporate query cx, cy intrinsics for rendering
