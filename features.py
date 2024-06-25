@@ -18,19 +18,19 @@ class Features:
 
     def __init__(
             self,
-            path_to_images: Path,
+            path_to_inputs: Path,
             path_to_features: Path,
             path_to_retrieval_pairs: Path,
             global_feature_conf_name: str,
             global_num_matched: int,
             local_feature_conf_name: str,
             local_match_conf_name: str,
-            db_prefix: str = 'database',
-            query_prefix: str = 'query'
+            db_images_prefix: str = 'database/images/',
+            query_images_prefix: str = 'query/images/'
         ):
 
         # Path to images
-        self.path_to_images = path_to_images
+        self.path_to_inputs = path_to_inputs
 
         # Path to features
         self.path_to_features = path_to_features
@@ -60,8 +60,8 @@ class Features:
 
         self.global_num_matched = global_num_matched
 
-        self.db_prefix = db_prefix
-        self.query_prefix = query_prefix
+        self.db_images_prefix = db_images_prefix
+        self.query_images_prefix = query_images_prefix
 
         self.path_to_global_descriptors = None
         self.path_to_local_features = None
@@ -74,7 +74,7 @@ class Features:
         """
         self.path_to_global_descriptors = extract_features.main(
             conf=self.global_feature_conf,
-            image_dir=self.path_to_images,
+            image_dir=self.path_to_inputs,
             export_dir=self.path_to_features,
         )        
 
@@ -82,10 +82,27 @@ class Features:
             descriptors=self.path_to_global_descriptors,
             output=self.path_to_retrieval_pairs,
             num_matched=self.global_num_matched,
-            db_prefix=self.db_prefix,
-            query_prefix=self.query_prefix,
+            db_prefix=self.db_images_prefix,
+            query_prefix=self.query_images_prefix,
         )
 
+    def write_meshloc_retrieval_pairs(self):
+        """
+        Write retrieval pairs in MeshLoc format.
+        - name += '-meshloc'
+        - content separated by commas instead of spaces only
+        - scores added as third column
+        """
+        path_to_meshloc_retrieval_pairs = self.path_to_retrieval_pairs.parent / (self.path_to_retrieval_pairs.stem + '-meshloc.txt')
+        with open(self.path_to_retrieval_pairs, 'r') as f:
+            with open(path_to_meshloc_retrieval_pairs, 'w') as g:
+                for line in f:
+                    # remove newline character
+                    line = line.strip('\n')
+                    query, db = line.split(' ')
+                    query, db = query.split('/')[-1], db.split('/')[-1]
+                    score = 0
+                    g.write(f'{query}, {db}, {score}\n')
 
     def local_feature_matching(self):
         """
@@ -94,7 +111,7 @@ class Features:
         
         self.path_to_local_features = extract_features.main(
             conf=self.local_feature_conf,
-            image_dir=self.path_to_images,
+            image_dir=self.path_to_inputs,
             export_dir=self.path_to_features,
         )    
 
@@ -104,7 +121,6 @@ class Features:
             features=self.local_feature_conf['output'],
             export_dir=self.path_to_features,
         )
-
 
     def check_retrieval_pairs(self, query_name: str, db_names: List[str] = None) -> bool:
         """
@@ -129,9 +145,9 @@ class Features:
         Draw points and lines between matched keypoints, with query image on the left, and database image on the right.
         '''
 
-        if not query_name.startswith(self.query_prefix):
-            query_name = self.query_prefix + '/' + query_name
-        query_image = read_image(self.path_to_images / query_name)
+        if not query_name.startswith(self.query_images_prefix):
+            query_name = self.query_images_prefix + query_name
+        query_image = read_image(self.path_to_inputs / query_name)
 
         if db_names:
             self.check_retrieval_pairs(query_name, db_names)  
@@ -142,9 +158,9 @@ class Features:
 
         for db_name in db_names:
 
-            if not db_name.startswith(self.db_prefix):
-                db_name = self.db_prefix + '/' + db_name
-            db_image = read_image(self.path_to_images / db_name)
+            if not db_name.startswith(self.db_images_prefix):
+                db_name = self.db_images_prefix + db_name
+            db_image = read_image(self.path_to_inputs / db_name)
             # pair, reverse = find_pair(local_matches, query_name, db_name)
             # if pair:
             matches, scores = get_matches(self.path_to_local_matches, query_name, db_name)
