@@ -13,118 +13,96 @@ from sfm_data import SfmData
 from cad_data import CadData
 from evaluation import overlay_query_and_rendered_images
 
+from data import path_to_evaluation, reference_models
 
 if __name__ == '__main__':
 
-    path_to_evaluation = Path('/Users/eric/Downloads/evaluation/')
+    for reference_model in reference_models:
 
-    models: list = [
-        'notre dame B',
-        'notre dame E'
-        ]
-
-    for model in models:
-
-        path_to_dataset = path_to_evaluation / f'{model}/'
-        path_to_ground_truth = path_to_dataset / 'ground_truth/'
-        path_to_inputs = path_to_dataset / 'inputs/'
-        path_to_outputs = path_to_dataset / 'outputs/'
-
-        assert path_to_ground_truth.exists(), f"Ground truth directory not found: {path_to_ground_truth}"
-        assert path_to_inputs.exists(), f"Inputs directory not found: {path_to_inputs}"
-        if not path_to_outputs.exists(): path_to_outputs.mkdir()
-
-        path_to_query = path_to_inputs / 'query/'
-        path_to_query_images = path_to_query / 'images/'
-
-        path_to_database = path_to_inputs / 'database/'
-
-        query_names = [f.name for f in path_to_query_images.glob('*')]
-
-
-        # 1. Feature Extraction & Matching
-        print('Image retrieval...')
-
-        path_to_features = path_to_outputs / 'features/'
-        path_to_retrieval_pairs = path_to_features / "pairs-from-retrieval.txt"
-
-        features = Features(
-            path_to_inputs,
-            path_to_features,
-            path_to_retrieval_pairs,
-            global_feature_conf_name='netvlad',
-            global_num_matched=10,
-            local_feature_conf_name='superpoint_aachen',
-            local_match_conf_name='superglue',
-            )
-
-        features.image_retrieval()
-
-        # features.local_feature_matching()
-        # for query_name in query_names:
-        #     features.visualize_local_matches(query_name, db_limit=3, min_score=0.6)
-        
-
-
-
-        # 2. SFM vs. CAD Data Evaluation
-        print('SfM vs. CAD data evaluation...')
-
-        path_to_sfm_data = Path('/Users/eric/Downloads/notre_dame_front_facade/dense/sparse/')
+        path_to_sfm_data = Path(reference_model['sfm_model'])
         sfm_data = SfmData(path_to_sfm_data)
-        sfm_data.write_query_intrinsics_text_file(path_to_inputs, query_names)
-        sfm_data.write_query_poses_text_file(path_to_ground_truth, query_names)
 
-        cad_data = CadData(path_to_ground_truth, path_to_database)
+        for cad_model in reference_model['cad_models']:
 
-        with open(path_to_ground_truth / 'cad_cam_poses.txt', 'w') as f:
-            f.write('')
+            prefix = reference_model['cad_models'][cad_model]['prefix']
 
-        for query_name in query_names:
-            query_id = sfm_data.get_image_id(query_name)
+            path_to_dataset = path_to_evaluation / f'{prefix}'
+            path_to_ground_truth = path_to_dataset / 'ground_truth/'
+            path_to_inputs = path_to_dataset / 'inputs/'
+            path_to_outputs = path_to_dataset / 'outputs/'
 
-            query_intrinsics = sfm_data.get_intrinsics(query_id)
-            # print('Camera intrinsics: ', query_intrinsics)
+            assert path_to_ground_truth.exists(), f"Ground truth directory not found: {path_to_ground_truth}"
+            assert path_to_inputs.exists(), f"Inputs directory not found: {path_to_inputs}"
+            if not path_to_outputs.exists(): path_to_outputs.mkdir()
 
-            # SFM pose in camera frame
-            pose_cam_sfm = sfm_data.get_pose(query_id)
-            # print('SFM pose (CAM frame): ', pose_cam_sfm)
+            path_to_query = path_to_inputs / 'query/'
+            path_to_query_images = path_to_query / 'images/'
+            path_to_database = path_to_inputs / 'database/'
 
-            # Camera pose in CAD frame
-            pose_cad_cam = cad_data.convert_query_pose_to_cad_frame(pose_cam_sfm)
-            # print('CAM pose (CAD frame): ', pose_cad_cam)
+            path_to_features = path_to_outputs / 'features/'
+            path_to_retrieval_pairs = path_to_features / "pairs-from-retrieval.txt"
+
+            query_names = [f.name for f in path_to_query_images.glob('*')]
+            print('Query images: ', query_names)
+
+
+
+            # 1. Image Retrieval
+            print('1. Image Retrieval...')
+            print('   (Requires Database Rendering - run render_database.py using Blender task)')
+
+            features = Features(
+                path_to_inputs,
+                path_to_features,
+                path_to_retrieval_pairs,
+                global_feature_conf_name='netvlad',
+                global_num_matched=20,
+                local_feature_conf_name='superpoint_aachen',
+                local_match_conf_name='superglue',
+                )
+
+            features.image_retrieval()
+            features.write_meshloc_retrieval_pairs()
+
+
+            # Local Feature Matching done by Localization Pipeline
+            # features.local_feature_matching()
+            # for query_name in query_names:
+            #     features.visualize_local_matches(query_name, db_limit=3, min_score=0.6)
             
-            with open(path_to_ground_truth / 'cad_cam_poses.txt', 'a') as f:
-                f.write(query_name + ' ' + ' '.join(map(str, pose_cad_cam)) + '\n')
 
 
-        # TODO: put in separate loop or move to another file (evaluation.py)
+            # 2. Ground Truth Conversion
+            print('2. Ground Truth Conversion...')
+            print('   (Requires 3D Registration - run manually using CloudCompare)')
 
-        overlay_query_and_rendered_images(
-            path_to_query_images,
-            path_to_ground_truth / 'renders/images/',
-            path_to_ground_truth / 'overlays/'
-            )
+            sfm_data.write_query_intrinsics_text_file(path_to_query, query_names)
+            sfm_data.write_query_poses_text_file(path_to_ground_truth, query_names)
 
-
-
-
-        # 3. Localization (MeshLoc)
-        print('MeshLoc localization...')
-        
-        # 3.1 Depth data
-        # TODO: make my data compatible with MeshLoc
-
-
-        # 3.2 CAD pose data
-        # TODO: make my data compatible with MeshLoc
-
-        # pose_db_cad = get_db_pose('database/image_0040.png')
-        # T_db_cad = pose_to_matrix(pose_db)
+            cad_data = CadData(path_to_ground_truth, path_to_database)
+            cad_data.write_render_data_in_colmap_format()
 
 
 
-# TODO: separate tasks into different files
-# A. Preprocessing (global feature extraction, SFM data extraction, CAD data extraction, etc.)
-# B. MeshLoc (local feature matching, localization, etc.)
-# C. Evaluation (ground truth comparison, visualization, error analysis, etc.)
+            # 3. Localization Pipeline
+            print('Localization Pipeline...')
+            print('   (For MeshLoc, run terminal command in image-matching-toolbox using immatch conda environment)')
+            
+            
+
+
+            # 4. Evaluation
+            print('4. Evaluation...')
+            print('   (Requires Query Rendering - run render_query.py using Blender task)')
+
+            overlay_query_and_rendered_images(
+                path_to_query_images,
+                path_to_ground_truth / 'renders/images/',
+                path_to_ground_truth / 'overlays/'
+                )
+
+            overlay_query_and_rendered_images(
+                path_to_query_images,
+                path_to_outputs / 'meshloc_out/renders/images',
+                path_to_outputs / 'meshloc_out/overlays/'
+                )
