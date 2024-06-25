@@ -31,7 +31,7 @@ class Blender:
         self.images_prefix = images_prefix
         self.depth_prefix = depth_prefix
         self.poses_prefix = poses_prefix
-        self.edges_prefix = edges_prefix
+        # self.edges_prefix = edges_prefix
         self.images_dir = render_dir + images_prefix
         self.depth_dir = render_dir + depth_prefix
         self.poses_dir = render_dir + poses_prefix
@@ -372,7 +372,7 @@ class Blender:
         self.map_range_node.inputs['From Min'].default_value = min_depth
         self.map_range_node.inputs['From Max'].default_value = max_depth
 
-    def save_depth_values(self, id : str, format: str):
+    def save_depth_values_from_depth_image(self, id : str, format: str='npz', at_inf: int = 0):
         """
         Calculate actual depth values from depth image and store in numpy array.
         """
@@ -383,28 +383,67 @@ class Blender:
         depth_values = np.array(depth_image.pixels[:]).reshape(depth_image.size[1], depth_image.size[0], 4)
 
         depth_values = depth_values[:, :, 0]
-        depth_values[depth_values == 0] = np.inf
-        depth_values[depth_values != np.inf] = depth_values[depth_values != np.inf] * (white - black) + black
+        # black: 0 = far away
+        depth_values[depth_values == 0] = at_inf
+        # everything else: scale according to white (close) and black (far away)
+        depth_values[depth_values != at_inf] = depth_values[depth_values != at_inf] * (white - black) + black
 
+        # check that depth values size is the same as the image size
         assert depth_values.shape == (depth_image.size[1], depth_image.size[0]), \
             depth_values.shape
-        assert depth_values.min() > white, \
-            f"Min depth value {depth_values.min()} less than white value {white}"
-        assert depth_values[depth_values != np.inf].size > 0, \
-            "All depth values are np.inf"
-        assert depth_values[depth_values != np.inf].max() < black, \
-            f"Max depth value {depth_values[depth_values != np.inf].max()} exceeds black value {black}"
+        
+        # check that depth values are within the white and black range
+        if depth_values[depth_values != at_inf].size > 0:
+            assert depth_values[depth_values != at_inf].min() > white, \
+                f"Min depth value {depth_values.min()} less than white value {white}"
+            assert depth_values[depth_values != at_inf].max() < black, \
+                f"Max depth value {depth_values[depth_values != at_inf].max()} exceeds black value {black}"
+        else:
+            print("All depth values are infinity")
         
         # depth_values[depth_values < white] = np.NaN
-        # depth_values[(depth_values != np.inf) & (depth_values < black)] = np.NaN
+        # depth_values[(depth_values != at_inf) & (depth_values < black)] = np.NaN
+
+        # invert the rows of the depth values
+        depth_values = np.flip(depth_values, 0)
 
         if format == 'npy':
-            np.save(os.path.join(self.depth_dir, f'{id}.npy'), depth_values)
+            np.save(os.path.join(self.depth_dir, f'{id}_depth.npy'), depth_values)
 
         elif format == 'npz':
             depth_values_dict = {}
             depth_values_dict['depth'] = depth_values
-            np.savez(os.path.join(self.depth_dir, f'{id}.npz'), **depth_values_dict)
+            np.savez(os.path.join(self.depth_dir, f'{id}_depth.npz'), **depth_values_dict)
+
+    # def save_depth_image_from_depth_values(self, id: str, format: str='npz', at_inf: int = 0):
+    #     """
+    #     Visualize depth values as an image and save.
+    #     """
+    #     depth_values = np.load(os.path.join(self.depth_dir, f'{id}_depth.{format}'))
+
+    #     black = 0
+    #     white = 1
+
+    #     # set at_inf values to black (0)
+    #     depth_values[depth_values == at_inf] = black
+
+    #     # opposite to this: depth_values[depth_values != at_inf] = depth_values[depth_values != np.inf] * (white - black) + black
+    #     # normalize depth values to [0, 1]
+    #     depth_values[depth_values != at_inf] = (depth_values[depth_values != at_inf] - black) / (white - black)
+
+    #     # reshape to image with 4 channels (RGBA)
+    #     depth_image = np.zeros((depth_values.shape[0], depth_values.shape[1], 4))
+    #     depth_image[:, :, 0] = depth_values
+    #     depth_image[:, :, 1] = depth_values
+    #     depth_image[:, :, 2] = depth_values
+    #     depth_image[:, :, 3] = 1
+
+    #     # create image object and save
+    #     depth_image = bpy.data.images.new(f'{id}_depth', depth_values.shape[1], depth_values.shape[0])
+    #     depth_image.pixels = depth_image.pixels[:] = depth_image.ravel()
+    #     depth_image.filepath_raw = os.path.join(self.depth_dir, f'{id}_depth.png')
+    #     depth_image.file_format = 'PNG'
+    #     depth_image.save()
 
     # def save_combined_depth_values(self, ids: List[str], name: str = 'depth'):
     #     """
@@ -439,6 +478,8 @@ class Blender:
         """
         Render images (+ depth and edges if enabled), save camera pose and depth values.
         """
+        self.set_depth_range()
+
         image_file = os.path.join(self.images_dir, f'{id}.png')
         bpy.context.scene.render.filepath = image_file
 
@@ -447,11 +488,9 @@ class Blender:
         
         self.depth_output.file_slots[0].path = id
 
-        self.set_depth_range()
-        
         bpy.ops.render.render(write_still=True)
 
-        self.save_depth_values(id, 'npz')
+        self.save_depth_values_from_depth_image(id, 'npz')
 
         self.write_camera_pose(id)
 
