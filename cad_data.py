@@ -4,8 +4,11 @@ from pyquaternion import Quaternion
 from scipy.spatial.transform import Rotation
 from transformations import decompose_matrix, compose_matrix
 from typing import Tuple, Dict, List
+import collections
+from matplotlib import pyplot as plt
 
 from transformation import pose_to_matrix, matrix_to_pose, invert_pose, invert_matrix
+from hloc.utils.read_write_model import write_cameras_binary, write_images_binary, CAMERA_MODEL_NAMES
 
 
 class CadData:
@@ -14,12 +17,20 @@ class CadData:
             self,
             path_to_ground_truth: Path,
             path_to_database: Path,
+            images_prefix: str = 'images/',
             poses_prefix: str = 'poses/',
+            depth_prefix: str = 'depth/',
             ):
         
         self.path_to_ground_truth = path_to_ground_truth
         self.path_to_database = path_to_database
-        self.path_to_database_poses = path_to_database / poses_prefix
+
+        self.path_to_poses = path_to_database / poses_prefix
+        self.path_to_images = path_to_database / images_prefix
+        self.path_to_depth = path_to_database / depth_prefix
+
+        self.image_names = [f.name for f in self.path_to_images.iterdir() if f.is_file() and not f.name.startswith('.')]
+        self.image_names = [name for name in self.image_names if name.split('.')[-1] in ['png', 'jpg', 'jpeg']]
         
         self.T_cad_sfm = self.read_registration_matrix()
         
@@ -36,13 +47,14 @@ class CadData:
 
         return T_cad_sfm
     
-    def read_db_pose(self, image_name: str) -> np.ndarray:
+    def read_database_pose(self, image_name: str) -> np.ndarray:
         """
         Get pose of database image from render output text file.
         Format: scalar-first (px, py, pz, qw, qx, qy, qz)
         """
-        pose_name = image_name.replace('.png', '.txt')
-        pose = np.loadtxt(self.path_to_database_poses / pose_name)
+        name = image_name.split('.')[0]
+        pose_name = name + '.txt'
+        pose = np.loadtxt(self.path_to_poses / pose_name)
         assert pose.shape == (7,), pose.shape
 
         return pose
@@ -68,3 +80,136 @@ class CadData:
         # print('CAM pose (CAD frame): ', pose_cad_cam)
 
         return pose_cad_cam
+
+    def write_render_data_in_colmap_format(
+            self,
+            f_mm: float = 50,
+            image_size: Tuple[int, int] = (1024, 1024),
+            ):
+        # - images[image_id] = Image(id, qvec, tvec, camera_id, name, xys, point3D_ids)   
+        # - cameras[camera_id] = Camera(id, model, width, height, params)
+        # - points3D[point3D_id] = Point3D(id, xyz, rgb, error, image_ids, point2D_idxs)
+
+        Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
+        Image = collections.namedtuple(
+            "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"]
+        )
+        # Point3D = collections.namedtuple(
+        #     "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"]
+        # )
+
+        # default: 50mm focal length (full frame), 1024x1024 image resolution
+        # simple pinhole: params f, cx, cy
+
+        w, h = image_size[0], image_size[1]
+        fx = fy = f_mm * w / 36
+        cx, cy = w/2, h/2
+
+        camera = Camera(
+            id=1,
+            model='PINHOLE',
+            width=w,
+            height=h,
+            params=np.array([fx, fy, cx, cy]),
+        )
+
+        cameras = {camera.id: camera}
+
+        write_cameras_binary(cameras, self.path_to_database / 'cameras.bin')
+
+        images = {}
+
+        for image_name in self.image_names:
+
+            name = image_name.split('.')[0]
+            image_id = int(name)
+
+            pose = self.read_database_pose(image_name)
+            tvec = pose[:3]
+            qvec = pose[3:]
+
+            xys = np.array([])
+            point3D_ids = np.array([])
+
+            images[image_id] = Image(
+                id=image_id,
+                qvec=qvec,
+                tvec=tvec,
+                camera_id=camera.id,
+                name=image_name,
+                xys=xys,
+                point3D_ids=point3D_ids,
+            )
+        
+        write_images_binary(images, self.path_to_database / 'images.bin')
+
+    @staticmethod
+    def visualize_depth_map(path_to_depth: Path, name: str, out: str = 'show'):
+        """
+        Visualize npy/npz depth map with colors according to depth values and a legend.
+        Goal: to check if depth map is correct.
+        """
+
+        name = name.split('.')[0]
+        if not name.endswith('_depth'):
+            name += '_depth'
+        depth_name = name + '.npz'
+
+        depth_map = np.load(path_to_depth / depth_name)['depth']
+
+        # Create a custom colormap with white for zero values
+        cmap = plt.get_cmap('viridis').copy()
+        cmap.set_bad(color='white')
+        
+        # Create a masked array, masking zero values
+        masked_depth_map = np.ma.masked_where(depth_map == 0, depth_map)
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        # Create a color-coded image of the depth map
+        im = ax.imshow(masked_depth_map, cmap='viridis')
+
+        # Reverse the y-axis
+        # ax.invert_yaxis()
+        
+        # Add a colorbar
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Depth', rotation=270, labelpad=15)
+        
+        # Set title and labels
+        ax.set_title('Depth Map Visualization')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        
+        if out == 'show':
+            plt.show()
+        elif out == 'save':
+            plt.savefig(path_to_depth / f'{name}_depth.png')
+            plt.close()
+        else:
+            raise ValueError(f"Invalid output option: {out}")
+        
+    def visualize_depth_maps(self):
+        """
+        Create depth images from depth maps and save them.
+        """
+        for image_name in self.image_names:
+            self.visualize_depth_map(self.path_to_depth, image_name, out='save')
+
+
+if __name__ == '__main__':
+
+    path_to_depth = Path('/Users/eric/Downloads/evaluation/notre_dame_B/inputs/database/depth/')
+    name = '0001'
+
+    CadData.visualize_depth_map(path_to_depth, name)
+
+    path_to_depth = Path('/Users/eric/Downloads/evaluation/notre_dame_E/inputs/database/depth/')
+    name = '0030'
+
+    CadData.visualize_depth_map(path_to_depth, name)
+
+    path_to_depth = Path('/Users/eric/Developer/meshloc_dataset/aachen_day_night_v11/db_renderings/AC14_depth_800_undist')
+    name = 'db_13'
+
+    CadData.visualize_depth_map(path_to_depth, name)    
