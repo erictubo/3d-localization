@@ -15,6 +15,7 @@ class Blender:
                  target_name: str,
                  camera_name: str = 'Camera',
                  image_size: 'tuple[int]' = (1024, 1024),
+                 focal_length_mm: float = 35,
                  depth_rendering: bool = True,
                  edge_rendering: bool = False,
                  images_prefix: str = 'images/',
@@ -46,20 +47,22 @@ class Blender:
         self.target.rotation_mode = 'QUATERNION'
         self.camera.rotation_mode = 'QUATERNION'
 
-        self.target_center, self.target_size, self.target_diagonal = \
+        self.target_center, self.target_size, self.target_diagonal, self.bbox_corners = \
             self.find_target_center_and_size()
+        self.ground_height = self.target_center.z - self.target_size.z/2
 
         print(f"Target center: {self.target_center}")
         print(f"Target size: {self.target_size}")
         print(f"Diagonal: {self.target_diagonal}")
+        print(f"Bounding box corners: {self.bbox_corners}")
+        print(f"Ground height: {self.ground_height}")
 
         self.distances = self.calculate_distances()
 
         print("Distances:", self.distances)
 
-        w, h = image_size[0], image_size[1]
-        _, _, f = self.get_camera_intrinsics('mm')
-        self.set_camera_intrinsics(w, h, f, 'mm')
+        width, height = image_size[0], image_size[1]
+        self.set_camera_intrinsics(width, height, focal_length_mm, 'mm')
         
         self.depth_rendering = depth_rendering
         if self.depth_rendering:
@@ -95,7 +98,7 @@ class Blender:
         else:
             # For normal objects, use its own bounding box
             all_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-        
+                
         # Calculate center and size
         min_coords = [min(coords) for coords in zip(*all_corners)]
         max_coords = [max(coords) for coords in zip(*all_corners)]
@@ -105,13 +108,16 @@ class Blender:
         x_dim = max_coords[0] - min_coords[0]
         y_dim = max_coords[1] - min_coords[1]
         z_dim = max_coords[2] - min_coords[2]
+
+        # Calculate 8 bounding box corners from center and size
+        bbox_corners = [center + Vector([x, y, z]) for x in [-x_dim/2, x_dim/2] for y in [-y_dim/2, y_dim/2] for z in [-z_dim/2, z_dim/2]]
         
         size = Vector([x_dim, y_dim, z_dim])
         diagonal = sqrt(x_dim**2 + y_dim**2 + z_dim**2)
         
         assert diagonal != 0, "Diagonal is zero"
         
-        return center, size, diagonal
+        return center, size, diagonal, bbox_corners
     
     def calculate_distances(self) -> List[int]:
         """
@@ -145,17 +151,17 @@ class Blender:
         else:
             raise ValueError(f"Select valid unit: 'mm' or 'fov'")
 
-    def set_camera_intrinsics(self, w: int, h: int, value: float, unit: str):
+    def set_camera_intrinsics(self, w: int, h: int, f_value: float, f_unit: str):
         """
         Set camera intrinsics (focal_length, w, h).
         """
         bpy.context.scene.render.resolution_x = w
         bpy.context.scene.render.resolution_y = h
 
-        if unit.upper() == 'MM':
-            self.camera.data.lens = value
-        elif unit.upper() == 'FOV':
-            self.camera.data.angle = value * pi/180   
+        if f_unit.upper() == 'MM':
+            self.camera.data.lens = f_value
+        elif f_unit.upper() == 'FOV':
+            self.camera.data.angle = f_value * pi/180   
         else:
             raise ValueError(f"Select valid unit: 'mm' or 'fov'") 
 
@@ -192,7 +198,6 @@ class Blender:
         Write current camera pose to a text file.
         """
         pose = self.get_camera_pose()
-
 
         with open(os.path.join(self.poses_dir, f'{id}.txt'), 'w') as f:
             f.write(' '.join(map(str, pose)))
@@ -369,14 +374,19 @@ class Blender:
         """
         Render orbit view at a specific distance, horizontal and vertical angle (deg).
         """
-        assert distance > self.target_diagonal/2, \
-            f' distance {distance} less than half of target diagonal {self.target_diagonal/2}'
-        assert abs(v_angle_deg) <= 75, \
-            f'vertical angle {v_angle} greater than +/-75 [deg]'
-
         h_angle = h_angle_deg * pi/180
         v_angle = v_angle_deg * pi/180
+
+        assert distance > self.target_diagonal/2, \
+            f' distance {distance} not consistenly outside the target bounding box diagonal {self.target_diagonal/2}'
+        assert abs(v_angle_deg) <= 75, \
+            f'vertical angle {v_angle} beyond +/-75 [deg]'
+
         self.set_camera_orbit_pose(distance, h_angle, v_angle)
+
+        assert self.camera.location.z >= (self.target_center.z - self.target_size.z/2), \
+            f'camera z position {self.camera.location.z} below the ground {self.target_center.z - self.target_size.z/2}'
+        
         self.render(id)
 
     def render_orbit_views(self, h_steps: int, v_angles_deg: 'list[int]', distances: 'list[int]' = None):
@@ -400,11 +410,71 @@ class Blender:
 
                     i += 1
                     id = f'{i:04d}'
+                    id = f'd{int(distance)}_h{int(h_angle_deg)}_v{int(v_angle_deg)}'
+
+                    # check if image already exists
+                    if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
+                        print(f"Image {id} already exists, skipping")
+                        continue
+
                     self.render_orbit_view(h_angle_deg, v_angle_deg, distance, id)
 
         print(f"Rendered {i} images")
 
         self.write_intrinsics_to_file()
+        self.write_bounding_box_to_file()
+
+    def render_ground_view(self, ground_distance: int, h_angle_deg: int, height_above_ground: int, id: str):
+        """
+        Render ground view at a specific distance, horizontal angle (deg) and height.
+        """
+        assert height_above_ground >= 0, \
+            f'height {height_above_ground} below ground level'
+        
+        h_angle = h_angle_deg * pi/180
+        height = self.ground_height + height_above_ground
+        
+        v_angle = atan2(height - self.target_center.z, ground_distance)
+
+        distance = sqrt(ground_distance**2 + (self.target_center.z - height)**2)
+        assert distance > self.target_diagonal/2, \
+            f' distance {distance} not consistenly outside the target bounding box diagonal {self.target_diagonal/2}'
+
+        self.set_camera_orbit_pose(distance, h_angle, v_angle)
+        
+        self.render(id)
+
+    def render_ground_views(self, distances: 'list[int]', h_steps: int, heights: 'list[int]'):
+        """
+        Render ground views at multiple distances, horizontal angles (deg) and heights.
+        """
+        assert min(distances) > self.target_diagonal/2, \
+            f'minimum distance {min(distances)} less than half of target diagonal {self.target_diagonal/2}'
+        assert min(heights) >= 0, \
+            f'minimum height {min(heights)} below ground level'
+        
+        h_angles_deg = [deg for deg in np.linspace(0, 360, h_steps, endpoint=False)]
+
+        i:int = 0
+        for distance in distances:
+            for h_angle_deg in h_angles_deg:
+                for height in heights:
+
+                    i += 1
+                    id = f'{i:04d}'
+                    id = f'd{int(distance)}_h{int(h_angle_deg)}_z{int(height)}'
+
+                    # check if image already exists
+                    if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
+                        print(f"Image {id} already exists, skipping")
+                        continue
+
+                    self.render_ground_view(distance, h_angle_deg, height, id)
+
+        print(f"Rendered {i} images")
+
+        self.write_intrinsics_to_file()
+        self.write_bounding_box_to_file()
     
     def write_intrinsics_to_file(self):
         """
@@ -413,6 +483,14 @@ class Blender:
         w, h, f = self.get_camera_intrinsics('mm')
         with open(os.path.join(self.render_dir, f'intrinsics.txt'), 'w') as file:
             file.write(f'{w} {h} {f}')
+    
+    def write_bounding_box_to_file(self):
+        """
+        Save bounding box corners to a text file.
+        """
+        with open(os.path.join(self.render_dir, f'bounding_box.txt'), 'w') as file:
+            for corner in self.bbox_corners:
+                file.write(f'{corner.x} {corner.y} {corner.z}\n')
 
 
 # TODO: incorporate query cx, cy intrinsics for rendering

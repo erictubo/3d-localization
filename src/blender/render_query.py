@@ -6,7 +6,7 @@ from math import pi
 from pathlib import Path
 from typing import Tuple
 
-sys.path.append('/Users/eric/Developer/cad_localization/blender')
+sys.path.append('/Users/eric/Developer/model_localization/blender')
 
 from render import Blender
 from render_data import evaluation_dir, models
@@ -38,10 +38,10 @@ def calculate_field_of_view_from_intrinsics(
 
     return fov_deg
 
-
 def render_query_poses(
         intrinsics_file: str,
-        poses_file: str
+        poses_file: str,
+        first: str = 't'
     ) -> None:
     """
     Render query images with pose and intrinsics.
@@ -65,7 +65,11 @@ def render_query_poses(
                     items = line.split(' ')
                     pose_name = items[0]
                     if query_name == pose_name:
-                        pose = np.array(items[1:], dtype=float)
+                        if first == 't':
+                            pose = np.array(items[1:], dtype=float)
+                        elif first == 'q':
+                            pose = np.array(items[1:], dtype=float)
+                            pose = np.concatenate([pose[4:], pose[:4]])
                         break
 
             print('Camera model:', camera_model)
@@ -86,8 +90,9 @@ if __name__ == '__main__':
 
         blend_file = models[model]['blend_file']
         target_name = models[model]['target_name']
+        prefix = models[model]['prefix']
 
-        dataset_dir = evaluation_dir + f'{model}/'
+        dataset_dir = evaluation_dir + prefix
 
         ground_truth_dir = dataset_dir + 'ground_truth/'
         inputs_dir = dataset_dir + 'inputs/'
@@ -99,21 +104,70 @@ if __name__ == '__main__':
 
         ground_truth_render_dir = ground_truth_dir + 'renders/'
 
+        meshloc_out_dir = output_dir + 'meshloc_out/'
+        meshloc_out_render_dir = meshloc_out_dir + 'renders/'
 
-        blender = Blender(
-            blend_file=blend_file,
-            render_dir=ground_truth_render_dir,
-            target_name=target_name,
-            )
-        
+
         intrinsics_file = query_dir + 'queries.txt'
-        ground_truth_poses_file = ground_truth_dir + 'cad_cam_poses.txt'
+
+
+        render_ground_truth = False
+        if render_ground_truth:
+
+            blender = Blender(
+                blend_file=blend_file,
+                render_dir=ground_truth_render_dir,
+                target_name=target_name,
+                )
+
+            ground_truth_poses_file = ground_truth_dir + 'cad_cam_poses.txt'
+            
+            render_query_poses(
+                intrinsics_file,
+                ground_truth_poses_file,
+                )
         
-        render_query_poses(
-            intrinsics_file,
-            ground_truth_poses_file,
+        render_meshloc = True
+        if render_meshloc:
+
+            blender = Blender(
+                blend_file=blend_file,
+                render_dir=meshloc_out_render_dir,
+                target_name=target_name,
+                )
+
+            meshloc_poses_file = meshloc_out_dir + '20_superglue_aachen_v1_1__20.0_keypoint_clusters_POSELIB+REF_min_10000_max_100000_ref_1.0_0.25_bias_0.0_0.0.txt'
+            
+            render_query_poses(
+                intrinsics_file,
+                meshloc_poses_file,
+                first='q',
             )
 
+
+# OLD METHOD OF TRANSFERRING QUERY DATA:
+
+
+# with open(path_to_ground_truth / 'cad_cam_poses.txt', 'w') as f:
+    #     f.write('')
+
+    # for query_name in query_names:
+    #     query_id = sfm_data.get_image_id(query_name)
+
+    #     query_intrinsics = sfm_data.get_intrinsics(query_id)
+    #     # print('Camera intrinsics: ', query_intrinsics)
+
+    #     # SFM pose in camera frame
+    #     pose_cam_sfm = sfm_data.get_pose(query_id)
+    #     # print('SFM pose (CAM frame): ', pose_cam_sfm)
+
+    #     # Camera pose in CAD frame
+    #     pose_cad_cam = cad_data.convert_query_pose_to_cad_frame(pose_cam_sfm)
+    #     # print('CAM pose (CAD frame): ', pose_cad_cam)
+        
+    #     with open(path_to_ground_truth / 'cad_cam_poses.txt', 'a') as f:
+    #         f.write(query_name + ' ' + ' '.join(map(str, pose_cad_cam)) + '\n')
+    
 
 # def read_query_ground_truth(
 #         path_to_outputs: Path,
