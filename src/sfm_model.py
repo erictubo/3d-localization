@@ -3,21 +3,24 @@ from pathlib import Path
 from typing import Tuple, Dict, List
 from math import pi
 
-from hloc.utils import read_write_model
+from colmap.read_write_model import read_model as read_colmap_model
 
-
-class SfmData:
+class SfmModel:
     """
-    Data retrieval class for COLMAP SfM ground truth database:
-    - images[image_id] = Image(id, qvec, tvec, camera_id, name, xys, point3D_ids)   
-    - cameras[camera_id] = Camera(id, model, width, height, params)
-    - points3D[point3D_id] = Point3D(id, xyz, rgb, error, image_ids, point2D_idxs)
+    Import SFM model data from COLMAP database (ground truth):
+    - get image id -> pose, intrinsics
+    - write intrinsics & poses to text file (as queries for MeshLoc pipeline)
     """
 
     def __init__(self, path_to_data: Path):
 
         self.path_to_data = path_to_data
-        self.cameras, self.images, self.points3d = read_write_model.read_model(path_to_data)
+        self.cameras, self.images, self.points3d = read_colmap_model(path_to_data)
+        """
+        - images[image_id] = Image(id, qvec, tvec, camera_id, name, xys, point3D_ids)   
+        - cameras[camera_id] = Camera(id, model, width, height, params)
+        - points3D[point3D_id] = Point3D(id, xyz, rgb, error, image_ids, point2D_idxs)
+        """
         
     def get_image_id(self, image_name: str) -> int:
         """

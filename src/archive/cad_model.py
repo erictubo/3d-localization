@@ -9,8 +9,8 @@ from matplotlib import pyplot as plt
 import OpenEXR
 import Imath
 
-from transformation import pose_to_matrix, matrix_to_pose, invert_pose, invert_matrix
-from hloc.utils.read_write_model import write_cameras_binary, write_images_binary, CAMERA_MODEL_NAMES
+from src.model_conversion import convert_pose_to_matrix, convert_matrix_to_pose
+from hloc.utils.read_write_model import write_cameras_binary, write_images_binary, write_points3D_binary, CAMERA_MODEL_NAMES
 
 
 class CadData:
@@ -67,43 +67,60 @@ class CadData:
         """
         # SFM in CAM frame
         # rotate 180 degrees about the x-axis to match Blender camera (facing -z direction)
-        T_cam_sfm = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ pose_to_matrix(pose_cam_sfm)
+        T_cam_sfm = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ convert_pose_to_matrix(pose_cam_sfm)
 
         # CAM in SFM frame
         T_sfm_cam = np.linalg.inv(T_cam_sfm)
-        # pose_sfm_cam = matrix_to_pose(T_sfm_cam)
+        # pose_sfm_cam = convert_matrix_to_pose(T_sfm_cam)
         # print('CAM pose (SFM frame): ', pose_sfm_cam)
 
         # CAM in CAD frame
         T_cad_cam = self.T_cad_sfm @ T_sfm_cam
         scale, shear, angles, translate, perspective = decompose_matrix(T_cad_cam)
         T_cad_cam = compose_matrix(None, None, angles, translate)
-        pose_cad_cam = matrix_to_pose(T_cad_cam)
+        pose_cad_cam = convert_matrix_to_pose(T_cad_cam)
         # print('CAM pose (CAD frame): ', pose_cad_cam)
 
         return pose_cad_cam
+    
+    def reverse_cad_pose_to_colmap_format(self, pose_cad_cam: np.ndarray) -> np.ndarray:
+        """
+        Reverse render pose in CAD frame to COLMAP format (pose_cam_cad).
+        """
+        T_cad_cam = convert_pose_to_matrix(pose_cad_cam)
+        T_cam_cad = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ np.linalg.inv(T_cad_cam)
+        pose_cam_cad = convert_matrix_to_pose(T_cam_cad)
+
+        return pose_cam_cad
 
     def convert_render_data_to_colmap_format(
             self,
-            f_mm: float = 50,
-            image_size: Tuple[int, int] = (1024, 1024),
+            model_name: str = None,
             ):
         # - images[image_id] = Image(id, qvec, tvec, camera_id, name, xys, point3D_ids)   
         # - cameras[camera_id] = Camera(id, model, width, height, params)
         # - points3D[point3D_id] = Point3D(id, xyz, rgb, error, image_ids, point2D_idxs)
 
-        Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
+        Camera = collections.namedtuple(
+            "Camera", ["id", "model", "width", "height", "params"]
+        )
         Image = collections.namedtuple(
             "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"]
         )
-        # Point3D = collections.namedtuple(
-        #     "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"]
-        # )
+        Point3D = collections.namedtuple(
+            "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"]
+        )
 
-        # default: 50mm focal length (full frame), 1024x1024 image resolution
-        # simple pinhole: params f, cx, cy
+        # read intrinsics.txt file in self.path_to_database with w, h, f_mm
 
-        w, h = image_size[0], image_size[1]
+        with open(self.path_to_database / 'intrinsics.txt', 'r') as file:
+            lines = file.readlines()
+            w, h, f_mm = [float(x) for x in lines[0].split()]
+            w, h = int(w), int(h)
+
+        print('w, h, f_mm: ', w, h, f_mm)
+
+        # w, h = image_size[0], image_size[1]
         fx = fy = f_mm * w / 36
         cx, cy = w/2, h/2
 
@@ -121,14 +138,15 @@ class CadData:
 
         images = {}
 
-        for image_name in self.image_names:
+        for i, image_name in enumerate(self.image_names):
 
-            name = image_name.split('.')[0]
-            image_id = int(name)
+            # name = image_name.split('.')[0]
+            image_id = i+1
 
-            pose = self.read_database_pose(image_name)
-            tvec = pose[:3]
-            qvec = pose[3:]
+            pose_cad_cam = self.read_database_pose(image_name)
+            pose_cam_cad = self.reverse_cad_pose_to_colmap_format(pose_cad_cam)
+            tvec = pose_cam_cad[:3]
+            qvec = pose_cam_cad[3:]
 
             xys = np.array([])
             point3D_ids = np.array([])
@@ -144,6 +162,68 @@ class CadData:
             )
         
         write_images_binary(images, self.path_to_database / 'images.bin')
+
+        points3d = {}
+        # Read bounding box coordinates from database
+        with open(self.path_to_database / 'bounding_box.txt', 'r') as file:
+            lines = file.readlines()
+            for i, line in enumerate(lines):
+                line.strip()
+                xyz = np.array([float(x) for x in line.split()])
+
+                points3d[i+1] = Point3D(
+                    id=i+1,
+                    xyz=xyz,
+                    rgb=np.array([0, 0, 0]),
+                    error=0,
+                    image_ids=np.array([]),
+                    point2D_idxs=np.array([]),
+                )
+
+        write_points3D_binary(points3d, self.path_to_database / 'points3D.bin')
+
+        # points3d = {}
+
+        # if model_name == 'notre dame B':
+        #     xyzs = np.array([
+        #         [6.0942, -4.1046, 45.9717], # center
+        #         [-68.25932312011719, -60.856727600097656, -1.1421051025390625],
+        #         [-68.25932312011719, -60.856727600097656, 93.08549499511719],
+        #         [-68.25932312011719, 52.647544860839844, -1.1421051025390625],
+        #         [-68.25932312011719, 52.647544860839844, 93.08549499511719],
+        #         [80.44776916503906, -60.856727600097656, -1.1421051025390625],
+        #         [80.44776916503906, -60.856727600097656, 93.08549499511719],
+        #         [80.44776916503906, 52.647544860839844, -1.1421051025390625],
+        #         [80.44776916503906, 52.647544860839844, 93.08549499511719],
+        #     ])
+        # elif model_name == 'notre dame E':
+        #     xyzs = np.array([
+        #         [0.0000, 79.4676, 52.5500], # center
+        #         [-35.53199005126953, -3.115997314453125, 0.0],
+        #         [-35.53199005126953, -3.115997314453125, 105.10000610351562],
+        #         [-35.53199005126953, 162.0512237548828, 0.0],
+        #         [-35.53199005126953, 162.0512237548828, 105.10000610351562],
+        #         [35.53199005126953, -3.115997314453125, 0.0],
+        #         [35.53199005126953, -3.115997314453125, 105.10000610351562],
+        #         [35.53199005126953, 162.0512237548828, 0.0],
+        #         [35.53199005126953, 162.0512237548828, 105.10000610351562],
+        #     ])
+        # elif model_name == None:
+        #     xyzs = np.array([[0, 0, 0]])
+        # else:
+        #     raise ValueError(f"Invalid model name: {model_name}")
+
+        # for i in range(len(xyzs)):
+        #     points3d[i] = Point3D(
+        #         id=i,
+        #         xyz=xyzs[i],
+        #         rgb=np.array([0, 0, 0]),
+        #         error=0,
+        #         image_ids=np.array([]),
+        #         point2D_idxs=np.array([]),
+        #     )
+
+        # write_points3D_binary(points3d, self.path_to_database / 'points3D.bin')
 
     @staticmethod
     def convert_depth_map_from_exr_to_npz(path_to_depth: Path, name: str):

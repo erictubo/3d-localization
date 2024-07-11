@@ -8,13 +8,14 @@ from types import SimpleNamespace
 from hloc import extract_features, match_features, pairs_from_retrieval
 from hloc.utils.io import read_image, get_keypoints, get_matches
 
-"""
-FEATURES
-Global and local feature extraction and matching.
-"""
-
 
 class Features:
+    """
+    Global and local feature extraction and matching:
+    - retrieve image pairs (global feature extraction and matching)
+    - extract & match local features
+    - visualize local matches
+    """
 
     def __init__(
             self,
@@ -68,7 +69,7 @@ class Features:
         self.path_to_local_matches = None
 
     
-    def image_retrieval(self):
+    def retrieve_image_pairs(self, meshloc_format: bool = True):
         """
         Retrieve image pairs using global feature matching.
         """
@@ -86,25 +87,22 @@ class Features:
             query_prefix=self.query_images_prefix,
         )
 
-    def write_meshloc_retrieval_pairs(self):
-        """
-        Write retrieval pairs in MeshLoc format.
-        - name += '-meshloc'
-        - content separated by commas instead of spaces only
-        - scores added as third column
-        """
-        path_to_meshloc_retrieval_pairs = self.path_to_retrieval_pairs.parent / (self.path_to_retrieval_pairs.stem + '-meshloc.txt')
-        with open(self.path_to_retrieval_pairs, 'r') as f:
-            with open(path_to_meshloc_retrieval_pairs, 'w') as g:
-                for line in f:
-                    # remove newline character
-                    line = line.strip('\n')
-                    query, db = line.split(' ')
-                    query, db = query.split('/')[-1], db.split('/')[-1]
-                    score = 0
-                    g.write(f'{query}, {db}, {score}\n')
+        if meshloc_format:
+            # 1. name += '-meshloc'
+            # 2. content separated by commas instead of spaces only
+            # 3. scores (0.0) added as third column
+            path_to_meshloc_retrieval_pairs = self.path_to_retrieval_pairs.parent / (self.path_to_retrieval_pairs.stem + '-meshloc.txt')
+            with open(self.path_to_retrieval_pairs, 'r') as f:
+                with open(path_to_meshloc_retrieval_pairs, 'w') as g:
+                    for line in f:
+                        line = line.strip('\n')
+                        query, db = line.split(' ')
+                        query, db = query.split('/')[-1], db.split('/')[-1]
+                        score = 0
+                        g.write(f'{query}, {db}, {score}\n')
 
-    def local_feature_matching(self):
+
+    def match_local_features(self):
         """
         Match local features between query and database images.
         """
@@ -122,6 +120,7 @@ class Features:
             export_dir=self.path_to_features,
         )
 
+
     def check_retrieval_pairs(self, query_name: str, db_names: List[str] = None) -> bool:
         """
         Check that retrieval pairs exist for query image and database images.
@@ -131,6 +130,7 @@ class Features:
                 if not any(line.startswith(query_name) and db_name in line for line in f):
                     raise ValueError(f"Pair not found: {query_name} {db_name}")
 
+
     def get_retrieved_db_images(self, query_name: str) -> List[str]:
         """
         Get retrieved database images for query image.
@@ -139,7 +139,8 @@ class Features:
             db_names = [line.split()[1] for line in f if line.startswith(query_name)]
         return db_names
 
-    def visualize_local_matches(self, query_name: str, db_names: List[str] = None, min_score: int = 0, db_limit: int = 10) -> None:
+
+    def visualize_local_matches_hloc(self, query_name: str, db_names: List[str] = None, min_score: int = 0, db_limit: int = 10) -> None:
         '''
         Visualize local matches between query image and paired database images.
         Draw points and lines between matched keypoints, with query image on the left, and database image on the right.
@@ -166,7 +167,7 @@ class Features:
             matches, scores = get_matches(self.path_to_local_matches, query_name, db_name)
 
             if self.path_to_local_features == None:
-                raise ValueError("Local features not yet extracted. Run local_feature_matching() first.")
+                raise ValueError("Local features not yet extracted. Run match_local_features() first.")
             query_keypoints = get_keypoints(self.path_to_local_features, query_name)
             db_keypoints = get_keypoints(self.path_to_local_features, db_name)
 
