@@ -1,9 +1,10 @@
 import numpy as np
 from typing import Tuple
 from pathlib import Path
+from PIL import Image
 
 
-class Evaluation:
+class Visualization:
 
     def __init__(self):
         pass
@@ -18,18 +19,18 @@ class Evaluation:
         """
         assert path_to_query_images.exists(), path_to_query_images
         assert path_to_render_images.exists(), path_to_render_images
-        
-        query_names = [f.name for f in path_to_query_images.glob('*')]
-        render_names = [f.name for f in path_to_render_images.glob('*')]
 
-        # print('Query names: ', query_names)
-        # print('Render names: ', render_names)
+        query_names = [f.name for f in path_to_query_images.glob('*') if f.suffix in ['.jpg', '.png', '.jpeg']]
+        render_names = [f.name for f in path_to_render_images.glob('*') if f.suffix in ['.jpg', '.png', '.jpeg']]
 
         for query_name in query_names:
 
-            from PIL import Image
+            render_name = next((name for name in render_names if 'query_' + query_name.split('.')[0] == name.split('.')[0]), None)
 
-            render_name = next((name for name in render_names if query_name.replace('.jpg','') in name), None)
+            if render_name:
+                render_names.remove(render_name)
+            else:
+                raise ValueError(f'No render image found for query image {query_name}')
             
             if render_name:
                 # Load the two images
@@ -60,3 +61,11 @@ class Evaluation:
                 if not path_to_overlays.exists():
                     path_to_overlays.mkdir()
                 combined_image.save(path_to_overlays / query_name)
+
+if __name__ == '__main__':
+
+    path_to_query_images = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/inputs/query/images')
+    path_to_render_images = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/outputs/meshloc_out/patch2pix/renders/images')
+    path_to_overlays = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/outputs/meshloc_out/patch2pix/overlays')
+
+    Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, path_to_overlays)
