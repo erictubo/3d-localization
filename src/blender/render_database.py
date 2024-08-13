@@ -1,6 +1,6 @@
 
 import sys
-sys.path.append('/Users/eric/Developer/model_localization/blender')
+sys.path.append('/Users/eric/Developer/model_localization/src/blender/')
 
 from render import Blender
 from render_data import blender_dir, models
@@ -26,8 +26,27 @@ if __name__ == "__main__":
         #     v_angles_deg = [-10, 0, 10, 20]
         #     )
         
-        blender.render_ground_views(
-            distances=[110, 160],
-            h_steps = 72,
-            heights = [2, 20]
-            )        
+        # blender.render_ground_views(
+        #     distances=[110, 160],
+        #     h_steps = 72,
+        #     heights = [2, 20]
+        #     )
+
+        # blender.render_ground_views(
+        #     distances=[110, 160, 210],
+        #     h_steps = 8,
+        #     heights = [2, 20],
+        #     focal_lengths=[35, 50, 70]
+        #     )
+
+
+
+        # MULTIPLE FOCAL LENGTHS
+
+        for f, d in [(30, 110), (60, 220), (120, 440)]:
+            blender.render_ground_views(
+                distances=[d],
+                h_steps = 24,
+                heights = [2, 20],
+                focal_lengths=[f]
+                )

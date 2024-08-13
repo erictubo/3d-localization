@@ -1,9 +1,8 @@
 import bpy
 import os
 import numpy as np
-from math import pi, sqrt, asin, acos, atan2
+from math import pi, sqrt, tan, asin, atan, atan2
 from mathutils import Vector, Quaternion
-from pathlib import Path
 from typing import Dict, Tuple, List, Optional, Union
 
 
@@ -14,19 +13,21 @@ class Blender:
                  render_dir: str,
                  target_name: str,
                  camera_name: str = 'Camera',
-                 image_size: 'tuple[int]' = (1024, 1024),
-                 focal_length_mm: float = 35,
+                 default_image_size: 'tuple[int]' = (1024, 1024),
+                 default_focal_length_mm: float = 35,
                  depth_rendering: bool = True,
                  edge_rendering: bool = False,
                  images_prefix: str = 'images/',
                  depth_prefix: str = 'depth/',
                  poses_prefix: str = 'poses/',
+                 intrinsics_prefix: str = 'intrinsics/',
                 #  edges_prefix: str = 'edges/'
                  ):
 
         # Open blend file
         bpy.ops.wm.open_mainfile(filepath=blend_file)
 
+        # Set directories
         self.render_dir = render_dir
 
         self.images_prefix = images_prefix
@@ -36,33 +37,32 @@ class Blender:
         self.images_dir = render_dir + images_prefix
         self.depth_dir = render_dir + depth_prefix
         self.poses_dir = render_dir + poses_prefix
+        self.intrinsics_dir = render_dir + intrinsics_prefix
         # self.edges_dir = render_dir + edges_prefix
 
-        for dir in [self.render_dir, self.images_dir, self.depth_dir, self.poses_dir]:
+        for dir in [self.render_dir, self.images_dir, self.depth_dir, self.poses_dir, self.intrinsics_dir]:
             if not os.path.exists(dir): os.makedirs(dir)
         
+        # Set objects
         self.target = bpy.data.objects[target_name]
         self.camera = bpy.data.objects[camera_name]
+        self.light = bpy.data.objects['Light']
 
+        # Set rotation mode
         self.target.rotation_mode = 'QUATERNION'
         self.camera.rotation_mode = 'QUATERNION'
+        self.light.rotation_mode = 'QUATERNION'
 
-        self.target_center, self.target_size, self.target_diagonal, self.bbox_corners = \
-            self.find_target_center_and_size()
-        self.ground_height = self.target_center.z - self.target_size.z/2
-
-        print(f"Target center: {self.target_center}")
-        print(f"Target size: {self.target_size}")
-        print(f"Diagonal: {self.target_diagonal}")
-        print(f"Bounding box corners: {self.bbox_corners}")
-        print(f"Ground height: {self.ground_height}")
+        self.get_target_dimensions()
 
         self.distances = self.calculate_distances()
 
         print("Distances:", self.distances)
 
-        width, height = image_size[0], image_size[1]
-        self.set_camera_intrinsics(width, height, focal_length_mm, 'mm')
+        self.default_image_size = default_image_size
+        self.default_focal_length_mm = default_focal_length_mm
+
+        self.set_camera_intrinsics(default_image_size[0], default_image_size[1], default_focal_length_mm, 'MM')
         
         self.depth_rendering = depth_rendering
         if self.depth_rendering:
@@ -74,12 +74,15 @@ class Blender:
 
 
     """
-    GEOMETRIC
+    GEOMETRY
     - target center
     - target size
+    - target diagonal
+    - bounding box corners
+    - ground height
     """
 
-    def find_target_center_and_size(self):
+    def get_target_dimensions(self):
         """
         Find the center of geometry and size of the target object or Empty in global frame.
         """
@@ -114,10 +117,30 @@ class Blender:
         
         size = Vector([x_dim, y_dim, z_dim])
         diagonal = sqrt(x_dim**2 + y_dim**2 + z_dim**2)
+        ground_height = center.z - size.z/2
         
         assert diagonal != 0, "Diagonal is zero"
-        
-        return center, size, diagonal, bbox_corners
+
+        self.target_center = center
+        self.target_size = size
+        self.target_diagonal = diagonal
+        self.bbox_corners = bbox_corners
+        self.ground_height = ground_height
+
+        print(f"Target center: {self.target_center}")
+        print(f"Target size: {self.target_size}")
+        print(f"Target diagonal: {self.target_diagonal}")
+        print(f"Bounding box corners: {self.bbox_corners}")
+        print(f"Ground height: {self.ground_height}")
+
+
+    def write_bounding_box_to_file(self):
+        """
+        Save bounding box corners to a text file.
+        """
+        with open(os.path.join(self.render_dir, f'bounding_box.txt'), 'w') as file:
+            for corner in self.bbox_corners:
+                file.write(f'{corner.x} {corner.y} {corner.z}\n')
     
     def calculate_distances(self) -> List[int]:
         """
@@ -126,6 +149,46 @@ class Blender:
         d = np.ceil(self.target_diagonal/2/10)*10
 
         return [d, 2*d]
+    
+    def convert_orbit_to_pose(self, distance: float, h_angle: float, v_angle: float, unit: str = 'rad') -> np.ndarray:
+        """
+        Convert orbit view parameters to camera pose.
+        """
+        if unit == 'deg':
+            h_angle *= pi/180
+            v_angle *= pi/180
+        
+        h_axis = Vector((0, 0, 1))
+        h_quat = Quaternion(h_axis, h_angle)
+
+        v_axis = Vector((0, -1, 0))
+        v_quat = Quaternion(v_axis, v_angle)
+
+        combined_quat = h_quat @ v_quat
+
+        offset = Vector((distance, 0, 0))
+        rotated_offset = combined_quat @ offset
+        px, py, pz = self.target_center + rotated_offset
+
+        direction = self.target_center - Vector((px, py, pz))
+        direction.normalize()
+        qw, qx, qy, qz = direction.to_track_quat('-Z', 'Y')
+
+        return np.array([px, py, pz, qw, qx, qy, qz])
+    
+    def convert_pose_to_orbit(self, pose: np.ndarray) -> Tuple[float, float, float]:
+        """
+        Convert camera pose to orbit view parameters.
+        """
+        px, py, pz, qw, qx, qy, qz = pose
+
+        distance = sqrt((px - self.target_center.x)**2 + (py - self.target_center.y)**2 + (pz - self.target_center.z)**2)
+        x, y, z = self.target_center - Vector((px, py, pz))
+
+        h_angle = atan2(y, x)
+        v_angle = asin(z/distance)
+        
+        return distance, h_angle, v_angle
 
 
     """
@@ -135,23 +198,38 @@ class Blender:
     - orbit pose
     """
 
-    def get_camera_intrinsics(self, unit: str = 'mm') -> 'tuple[float, int, int]':
+    def get_camera_intrinsics(self, f_unit: str) -> 'tuple[int, int, float, float, float]':
         """
-        Get camera intrinsics (focal_length, sensor_width, sensor_height).
+        Get camera intrinsics (w, h, f, cx, cy)
         """
         w = bpy.context.scene.render.resolution_x
         h = bpy.context.scene.render.resolution_y
 
-        if unit.upper() == 'FOV':
-            fov_deg = self.camera.data.angle * 180/pi
-            return w, h, fov_deg
-        elif unit.upper() == 'MM':
-            f = self.camera.data.lens
-            return w, h, f
-        else:
-            raise ValueError(f"Select valid unit: 'mm' or 'fov'")
+        cx = w/2 - max(w,h) * self.camera.data.shift_x
+        cy = h/2 + max(w,h) * self.camera.data.shift_y
 
-    def set_camera_intrinsics(self, w: int, h: int, f_value: float, f_unit: str):
+        fov_rad = self.camera.data.angle
+        fov_deg = fov_rad * 180/pi
+
+        f_pix = max(w, h) / (2 * tan(fov_rad/2))
+
+        f_mm = self.camera.data.lens
+
+        if f_unit.upper() == 'MM':
+            f = f_mm
+        elif f_unit.upper() == 'PIX':
+            f = f_pix
+        elif f_unit.upper() == 'DEG':
+            f = fov_deg
+        elif f_unit.upper() == 'RAD':
+            f = fov_rad
+        else:
+            raise ValueError(f"Select valid focal length unit: 'MM', 'PIX', 'DEG' or 'RAD'")
+
+        return w, h, f, f_unit, cx, cy
+
+
+    def set_camera_intrinsics(self, w: int, h: int, f: float, f_unit: str, cx: float = None, cy: float = None):
         """
         Set camera intrinsics (focal_length, w, h).
         """
@@ -159,11 +237,34 @@ class Blender:
         bpy.context.scene.render.resolution_y = h
 
         if f_unit.upper() == 'MM':
-            self.camera.data.lens = f_value
-        elif f_unit.upper() == 'FOV':
-            self.camera.data.angle = f_value * pi/180   
+            self.camera.data.lens = f
+        elif f_unit.upper() == 'PIX':
+            self.camera.data.angle = 2 * atan(max(w, h)/(2*f))
+        elif f_unit.upper() == 'DEG':
+            self.camera.data.angle = f * pi/180
+        elif f_unit.upper() == 'RAD':
+            self.camera.data.angle = f
         else:
-            raise ValueError(f"Select valid unit: 'mm' or 'fov'") 
+            raise ValueError(f"Select valid focal length unit: 'MM', 'PIX', 'DEG' or 'RAD'")
+        
+        if cx is not None:
+            self.camera.data.shift_x = (w/2 - cx)/max(w, h)
+        else:
+            self.camera.data.shift_x = 0
+        
+        if cy is not None:
+            self.camera.data.shift_y = (cy - h/2)/max(w, h)
+        else:
+            self.camera.data.shift_y = 0
+        
+    def write_camera_intrinsics(self, id: str, f_unit: str = 'MM'):
+        """
+        Save camera intrinsics to a text file.
+        """
+        w, h, f, f_unit, cx, cy = self.get_camera_intrinsics(f_unit)
+        with open(os.path.join(self.intrinsics_dir, f'{id}.txt'), 'w') as file:
+            file.write(f'{w} {h} {f} {f_unit} {cx} {cy}')
+
 
     def get_camera_pose(self) -> np.ndarray:
         """
@@ -212,30 +313,33 @@ class Blender:
         
         return pose
 
-    def set_camera_orbit_pose(self, distance: float, h_angle: float, v_angle: float, unit: str = 'rad'):
+    def set_camera_orbit_pose(self, distance: float, h_angle: float, v_angle: float, unit: str = 'rad', lighting: bool = True):
         """
         Set camera pose in orbit view around target object.
         """
-        if unit == 'deg':
-            h_angle *= pi/180
-            v_angle *= pi/180
+        pose = self.convert_orbit_to_pose(distance, h_angle, v_angle, unit)
+        self.set_camera_pose(pose)
+        
+        # if unit == 'deg':
+        #     h_angle *= pi/180
+        #     v_angle *= pi/180
     
-        h_axis = Vector((0, 0, 1))
-        h_quat = Quaternion(h_axis, h_angle)
+        # h_axis = Vector((0, 0, 1))
+        # h_quat = Quaternion(h_axis, h_angle)
 
-        v_axis = Vector((0, -1, 0))
-        v_quat = Quaternion(v_axis, v_angle)
+        # v_axis = Vector((0, -1, 0))
+        # v_quat = Quaternion(v_axis, v_angle)
 
-        combined_quat = h_quat @ v_quat
+        # combined_quat = h_quat @ v_quat
 
-        offset = Vector((distance, 0, 0))
-        rotated_offset = combined_quat @ offset
-        self.camera.location = self.target_center + rotated_offset
+        # offset = Vector((distance, 0, 0))
+        # rotated_offset = combined_quat @ offset
+        # self.camera.location = self.target_center + rotated_offset
 
-        direction = self.target_center - self.camera.location
-        direction.normalize()
-        quat_to_target = direction.to_track_quat('-Z', 'Y')
-        self.camera.rotation_quaternion = quat_to_target
+        # direction = self.target_center - self.camera.location
+        # direction.normalize()
+        # quat_to_target = direction.to_track_quat('-Z', 'Y')
+        # self.camera.rotation_quaternion = quat_to_target
 
     def get_camera_orbit_pose(self) -> Tuple[float, float, float]:
         """
@@ -271,6 +375,36 @@ class Blender:
         v_angle += relative_v_angle
 
         self.set_camera_orbit_pose(distance, h_angle, v_angle)
+
+    """
+    LIGHTING
+    """
+
+    def get_lighting_pose(self) -> np.ndarray:
+        """
+        Get lighting pose (px, py, pz, qx, qy, qz, qw).
+        """
+        px, py, pz = self.light.location
+        qw, qx, qy, qz = self.light.rotation_quaternion
+        pose = np.array([px, py, pz, qw, qx, qy, qz])
+
+        return pose
+
+    def set_lighting_pose(self, pose: np.ndarray):
+        """
+        Set lighting pose (px, py, pz, qw, qx, qy, qz) in world coordinates.
+        """
+        px, py, pz, qw, qx, qy, qz = pose
+
+        self.light.location = Vector((px, py, pz))
+        self.light.rotation_quaternion = Quaternion((qw, qx, qy, qz))
+
+    def set_lighting_orbit_pose(self, distance: float, h_angle: float, v_angle: float, unit: str = 'rad'):
+        """
+        Set lighting pose in orbit view around target object.
+        """
+        pose = self.convert_orbit_to_pose(distance, h_angle, v_angle, unit)
+        self.set_lighting_pose(pose)
 
 
     """
@@ -354,7 +488,7 @@ class Blender:
     RENDERING
     """
     
-    def render(self, id:str):
+    def render(self, id: str):
         """
         Render images (+ depth and edges if enabled), save camera pose and depth values.
         """
@@ -369,8 +503,9 @@ class Blender:
         bpy.ops.render.render(write_still=True)
 
         self.write_camera_pose(id)
+        self.write_camera_intrinsics(id)
 
-    def render_orbit_view(self, h_angle_deg: int, v_angle_deg: int, distance: int, id: str):
+    def render_orbit_view(self, id: str, h_angle_deg: int, v_angle_deg: int, distance: int, f: float = 35, f_unit: str = 'MM'):
         """
         Render orbit view at a specific distance, horizontal and vertical angle (deg).
         """
@@ -383,13 +518,14 @@ class Blender:
             f'vertical angle {v_angle} beyond +/-75 [deg]'
 
         self.set_camera_orbit_pose(distance, h_angle, v_angle)
+        self.set_camera_intrinsics(self.default_image_size[0], self.default_image_size[1], f, f_unit)
 
         assert self.camera.location.z >= (self.target_center.z - self.target_size.z/2), \
             f'camera z position {self.camera.location.z} below the ground {self.target_center.z - self.target_size.z/2}'
         
         self.render(id)
 
-    def render_orbit_views(self, h_steps: int, v_angles_deg: 'list[int]', distances: 'list[int]' = None):
+    def render_orbit_views(self, h_steps: int, v_angles_deg: 'list[int]', distances: 'list[int]' = None, focal_lengths: 'list[float]' = [35], f_unit: str = 'MM'):
         """
         Render orbit views at multiple distances, horizontal and vertical angles (deg).
         """
@@ -402,29 +538,34 @@ class Blender:
             f'minimum distance {min(distances)} less than half of target diagonal {self.target_diagonal/2}'
         assert max(v_angles_deg, key=abs) <= 75, \
             f'maximum vertical angle {max(v_angles_deg, key=abs)} greater than +/-75 [deg]'
+        
+        total = len(focal_lengths) * len(distances) * len(h_angles_deg) * len(v_angles_deg)
+
+        print(f"Rendering {total} images ...")
 
         i:int = 0
-        for distance in distances:
-            for v_angle_deg in v_angles_deg:
-                for h_angle_deg in h_angles_deg:
 
-                    i += 1
-                    id = f'{i:04d}'
-                    id = f'd{int(distance)}_h{int(h_angle_deg)}_v{int(v_angle_deg)}'
+        for f in focal_lengths:
+            for distance in distances:
+                for v_angle_deg in v_angles_deg:
+                    for h_angle_deg in h_angles_deg:
 
-                    # check if image already exists
-                    if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
-                        print(f"Image {id} already exists, skipping")
-                        continue
+                        i += 1
+                        id = f'{i:04d}'
+                        id = f'f{int(f)}_d{int(distance)}_v{int(v_angle_deg)}_h{int(h_angle_deg)}'
 
-                    self.render_orbit_view(h_angle_deg, v_angle_deg, distance, id)
+                        # skip if already exists
+                        if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
+                            print(f"Render {id} already exists, skipping")
+                            continue
 
-        print(f"Rendered {i} images")
+                        self.render_orbit_view(id, h_angle_deg, v_angle_deg, distance, f, f_unit)
 
-        self.write_intrinsics_to_file()
+                        print(f"Render {i} / {total} ...")
+
         self.write_bounding_box_to_file()
 
-    def render_ground_view(self, ground_distance: int, h_angle_deg: int, height_above_ground: int, id: str):
+    def render_ground_view(self, id: str, ground_distance: int, h_angle_deg: int, height_above_ground: int, f: float = 35, f_unit: str = 'MM'):
         """
         Render ground view at a specific distance, horizontal angle (deg) and height.
         """
@@ -441,10 +582,14 @@ class Blender:
             f' distance {distance} not consistenly outside the target bounding box diagonal {self.target_diagonal/2}'
 
         self.set_camera_orbit_pose(distance, h_angle, v_angle)
+
+        self.set_camera_intrinsics(self.default_image_size[0], self.default_image_size[1], f, f_unit)
+
+        self.set_lighting_orbit_pose(distance, h_angle, (pi/2 + v_angle)/2)
         
         self.render(id)
 
-    def render_ground_views(self, distances: 'list[int]', h_steps: int, heights: 'list[int]'):
+    def render_ground_views(self, distances: 'list[int]', h_steps: int, heights: 'list[int]', focal_lengths: 'list[float]' = [35], f_unit: str = 'MM'):
         """
         Render ground views at multiple distances, horizontal angles (deg) and heights.
         """
@@ -455,47 +600,47 @@ class Blender:
         
         h_angles_deg = [deg for deg in np.linspace(0, 360, h_steps, endpoint=False)]
 
+        total = len(distances) * len(h_angles_deg) * len(heights)
+
+        print(f"Rendering {total} images ...")
+
         i:int = 0
-        for distance in distances:
-            for h_angle_deg in h_angles_deg:
-                for height in heights:
+        for f in focal_lengths:
+            for distance in distances:
+                for h_angle_deg in h_angles_deg:
+                    for height in heights:
 
-                    i += 1
-                    id = f'{i:04d}'
-                    id = f'd{int(distance)}_h{int(h_angle_deg)}_z{int(height)}'
+                        i += 1
+                        id = f'{i:04d}'
+                        id = f'f{int(f)}_d{int(distance)}_z{int(height)}_h{int(h_angle_deg)}'
 
-                    # check if image already exists
-                    if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
-                        print(f"Image {id} already exists, skipping")
-                        continue
+                        # skip if already exists
+                        if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
+                            print(f"Render {id} already exists, skipping")
+                            continue
 
-                    self.render_ground_view(distance, h_angle_deg, height, id)
+                        self.render_ground_view(id, distance, h_angle_deg, height, f, f_unit)
 
-        print(f"Rendered {i} images")
+                        print(f"Render {i} / {total} ...")
 
-        self.write_intrinsics_to_file()
         self.write_bounding_box_to_file()
-    
-    def write_intrinsics_to_file(self):
-        """
-        Save camera intrinsics to a text file.
-        """
-        w, h, f = self.get_camera_intrinsics('mm')
-        with open(os.path.join(self.render_dir, f'intrinsics.txt'), 'w') as file:
-            file.write(f'{w} {h} {f}')
-    
-    def write_bounding_box_to_file(self):
-        """
-        Save bounding box corners to a text file.
-        """
-        with open(os.path.join(self.render_dir, f'bounding_box.txt'), 'w') as file:
-            for corner in self.bbox_corners:
-                file.write(f'{corner.x} {corner.y} {corner.z}\n')
 
 
-# TODO: incorporate query cx, cy intrinsics for rendering
+if __name__ == "__main__":
+    blender_dir = '/Users/eric/Library/Mobile Documents/com~apple~CloudDocs/Blender/'
+    blend_file = f'{blender_dir}assets/models/notre dame E/notre dame E.blend'
+    target_name = 'notre-dame-de-paris-complete-miniworld3d'
 
-# TODO: supress Blender terminal output
+    render_dir = f'{blender_dir}renders/notre_dame_E_lighting/'
 
-# TODO: run Blender code without task configuration
-    # -> integrate with other files
+    blender = Blender(
+        blend_file,
+        render_dir,
+        target_name,
+        )
+
+    blender.render_ground_views(
+        distances=[110],
+        h_steps = 8,
+        heights = [10]
+        )
