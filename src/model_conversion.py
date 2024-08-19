@@ -10,8 +10,8 @@ import OpenEXR
 import Imath
 
 from colmap.read_write_model import (
-    Camera, write_cameras_binary, write_cameras_text,
-    BaseImage, write_images_binary, write_images_text,
+    Camera, write_cameras_binary, write_cameras_text, read_cameras_binary, read_cameras_text,
+    BaseImage, write_images_binary, write_images_text, read_images_binary, read_images_text,
     Point3D, write_points3D_binary, write_points3D_text,
 )
 
@@ -56,8 +56,10 @@ class ModelConversion:
             path_to_ground_truth: Path,
             path_to_database: Path = None,
             images_prefix: str = 'images/',
+            intrinsics_prefix: str = 'intrinsics/',
             poses_prefix: str = 'poses/',
             depth_prefix: str = 'depth/',
+            scene_coordinates_prefix: str = 'scene_coordinates/',
             ):
         
         self.path_to_ground_truth = path_to_ground_truth
@@ -72,6 +74,8 @@ class ModelConversion:
             self.path_to_poses = path_to_database / poses_prefix
             self.path_to_images = path_to_database / images_prefix
             self.path_to_depth = path_to_database / depth_prefix
+            self.path_to_intrinsics = path_to_database / intrinsics_prefix
+            self.path_to_scene_coordinates = path_to_database / scene_coordinates_prefix
 
             self.image_names = self.read_image_names(self.path_to_images)
         
@@ -222,36 +226,84 @@ class ModelConversion:
     def convert_render_intrinsics_and_poses_to_colmap_format(self, from_blender_format: bool):
         """
         Convert render intrinsics and poses to COLMAP format.
-        Assumption: all images have the same intrinsics.
+        Assumption: fx=fy (only used along largest dimension).
         """
 
-        # Read intrinsics from database
-        with open(self.path_to_database / 'intrinsics.txt', 'r') as file:
-            lines = file.readlines()
-            w, h, f_mm = [float(x) for x in lines[0].split()]
-            w, h = int(w), int(h)
-            fx = fy = f_mm * w / 36
-            cx, cy = w/2, h/2
+        # OLD: global intrinsics
 
-        camera = Camera(
-            id=1,
-            model='PINHOLE',
-            width=w,
-            height=h,
-            params=np.array([fx, fy, cx, cy]),
-        )
+        # with open(self.path_to_database / 'intrinsics.txt', 'r') as file:
+        #     lines = file.readlines()
+        #     w, h, f_mm = [float(x) for x in lines[0].split()]
+        #     w, h = int(w), int(h)
+        #     fx = fy = f_mm * w / 36
+        #     cx, cy = w/2, h/2
 
-        cameras = {camera.id: camera}
-        write_cameras_binary(cameras, self.path_to_database / 'cameras.bin')
-        write_cameras_text(cameras, self.path_to_database / 'cameras.txt')
+        # camera = Camera(
+        #     id=1,
+        #     model='PINHOLE',
+        #     width=w,
+        #     height=h,
+        #     params=np.array([fx, fy, cx, cy]),
+        # )
 
+
+        # NEW: individual intrinsics
+
+        cameras = {}
         images = {}
+
+        camera_id = 1
+        previous_intrinsics = {} # dictionary of unique previous intrinsics with camera_id
+
         for i, image_name in enumerate(self.image_names):
 
             image_id = i+1
+            name = image_name.split('.')[0]
 
-            # Read pose from database
-            pose_cad_cam = np.loadtxt(self.path_to_poses / (image_name.split('.')[0] + '.txt'))
+            # 1. INTRINSICS
+
+            # Read intrinsics from file (w, h, f, f_unit: str, cx, cy)
+            # read string from file, not as numpy array
+            file = self.path_to_intrinsics / (name + '.txt')
+            intrinsics = file.read_text()
+        
+            # If intrinsics are new, add a new camera
+            if intrinsics not in previous_intrinsics.keys():
+                previous_intrinsics[intrinsics] = camera_id
+
+                # Extract and convert intrinsics
+                intrinsics = intrinsics.strip().split()
+                assert len(intrinsics) == 6, print(f'intrinsics {intrinsics} of length {len(intrinsics)} != 6')
+                w, h, f, f_unit, cx, cy = int(intrinsics[0]), int(intrinsics[1]), float(intrinsics[2]), intrinsics[3], float(intrinsics[4]), float(intrinsics[5])
+
+                if f_unit.upper() == 'MM':
+                    fx = fy = f * max(w,h) / 36
+                elif f_unit.upper() == 'PIX':
+                    fx = fy = f
+                else:
+                    raise ValueError(f'Focal length unit {f_unit} not implemented.')
+            
+                # Create camera
+                camera = Camera(
+                    id=camera_id,
+                    model='PINHOLE',
+                    width=w,
+                    height=h,
+                    params=np.array([fx, fy, cx, cy]),
+                )
+
+                cameras[camera_id] = camera
+                camera_id += 1
+
+            else:
+                camera_id = previous_intrinsics[intrinsics]
+                assert camera_id in cameras.keys(), print(camera_id, cameras.keys())
+
+
+            # 2. POSE
+
+            # Read pose from file
+            pose_cad_cam = np.loadtxt(self.path_to_poses / (name + '.txt'))
             assert pose_cad_cam.shape == (7,), pose_cad_cam.shape
 
             # Convert pose from CAD to COLMAP format
@@ -274,9 +326,13 @@ class ModelConversion:
                 xys=xys,
                 point3D_ids=point3D_ids,
             )
+
+        write_cameras_binary(cameras, self.path_to_database / 'cameras.bin')
+        write_cameras_text(cameras, self.path_to_database / 'cameras.txt')
         
         write_images_binary(images, self.path_to_database / 'images.bin')
         write_images_text(images, self.path_to_database / 'images.txt')
+
 
         # points3d = {}
         # # Read bounding box coordinates from database
@@ -313,8 +369,8 @@ class ModelConversion:
         Convert EXR depth maps to NPZ format.
         """
         name = name.split('.')[0]
-        if not name.endswith('_depth'):
-            name += '_depth'
+        # if not name.endswith('_depth'):
+        #     name += '_depth'
         depth_name = name + '.exr'
 
         file = OpenEXR.InputFile(str(path_to_depth / depth_name))
@@ -346,68 +402,12 @@ class ModelConversion:
         for image_name in self.image_names:
             self.convert_depth_map_from_exr_to_npz(self.path_to_depth, image_name, scale=self.s_cad_sfm)
 
-    @staticmethod
-    def visualize_depth_map(path_to_depth: Path, name: str, path_to_output: Path = None):
-        """
-        Visualize npy/npz depth map with colors according to depth values and a legend.
-        Goal: to check if depth map is correct.
-        """
-
-        cmap = plt.get_cmap('viridis')
-        cmap.set_bad(color='white')
-
-        name = name.split('.')[0]
-        if not name.endswith('_depth'):
-            name += '_depth'
-        depth_name = name + '.npz'
-
-        depth_map = np.load(path_to_depth / depth_name)['depth']
-        
-        # Create a masked array, masking zero values
-        masked_depth_map = np.ma.masked_where(depth_map == 0, depth_map)
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-
-        # Create a color-coded image of the depth map
-        im = ax.imshow(masked_depth_map, cmap=cmap)
-
-        # Reverse the y-axis
-        # ax.invert_yaxis()
-        
-        # Add a colorbar
-        cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label('Depth', rotation=270, labelpad=15)
-        
-        # ax.set_title('Depth Map Visualization')
-
-        # ax.set_xlabel('X')
-        # ax.set_ylabel('Y')
-        # ax.axis('off')
-
-        ax.set_xticks([])
-        ax.set_yticks([])
-        
-        if not path_to_output:
-            plt.show()
-        else:
-            plt.savefig(path_to_output / f'{name}.png', transparent=True)
-        plt.close()
-
-        
-    # def visualize_depth_maps(self):
-    #     """
-    #     Create depth images from depth maps and save them.
-    #     """
-    #     for image_name in self.image_names:
-    #         self.visualize_depth_map(self.path_to_depth, image_name, out='save')
-
-
     """
     SCENE COORDINATES:
     """
 
     @staticmethod
-    def convert_depth_map_to_scene_coordinate_map(
+    def transform_depth_to_scene_coordinate_map(
             depth_map: np.ndarray,
             camera_intrinsics: np.ndarray,
             pose_cam_sfm: np.ndarray,
@@ -440,50 +440,50 @@ class ModelConversion:
         assert points_sfm.shape == depth_map.shape + (3,), points_sfm.shape
 
         return points_sfm
-    
-    @staticmethod
-    def visualize_scene_coordinate_map(
-            coordinates: np.ndarray,
-            path_to_output: Path = None,
-        ):
+
+
+    def convert_depth_to_scene_coordinate_maps(self):
         """
-        Visualize scene coordinates.
+        Convert all depth maps to scene coordinates and save as NPZ files.
         """
 
-        cmap = plt.get_cmap('viridis')
+        if not self.path_to_scene_coordinates.exists():
+            self.path_to_scene_coordinates.mkdir()
 
-        mask = np.all(coordinates == [0., 0., 0.], axis=-1)
-        masked_coordinates = np.ma.masked_array(coordinates, mask=np.repeat(mask[:, :, np.newaxis], 3, axis=2))
-        
-        # Normalize the coordinates to the range [0, 1]
-        normalized_coordinates = (masked_coordinates - masked_coordinates.min(axis=(0, 1))) / (masked_coordinates.max(axis=(0, 1)) - masked_coordinates.min(axis=(0, 1)))
+        # OPTION A: read poses & intrinsics from COLMAP files (images.txt, cameras.txt)
 
-        # set all masked values to white
-        normalized_coordinates = np.where(mask[:, :, np.newaxis], 1, normalized_coordinates)
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-
-        # Use the normalized coordinates as RGB values
-        im = ax.imshow(normalized_coordinates, cmap=cmap)
-        
-        # ax.set_title('3D Coordinate Visualization')
-
-        # ax.set_xlabel('X')
-        # ax.set_ylabel('Y')
-        # ax.axis('off')
-
-        ax.set_xticks([])
-        ax.set_yticks([])
-        
-        if not path_to_output:
-            plt.show()
-        else:
-            plt.savefig(path_to_output / f'{name}_coordinates.png', transparent=True)
-        plt.close()
-        
+        images = read_images_text(self.path_to_database / 'images.txt')
+        cameras = read_cameras_text(self.path_to_database / 'cameras.txt')
 
 
-if __name__ == '__main__':
+        for image_name in self.image_names:
+            name = image_name.split('.')[0]
+
+            image_id = [k for k, v in images.items() if v.name == image_name][0]
+
+            image = images[image_id]
+            camera = cameras[image.camera_id]
+
+            assert camera.model == 'PINHOLE', print(f'Camera model {camera.model} not implemented.')
+            camera_intrinsics = camera.params # format: [fx, fy, cx, cy]
+            pose_cam_sfm = np.append(image.tvec, image.qvec)
+
+            depth_name = name + '.npz'
+            depth_map = np.load(self.path_to_depth / depth_name)['depth']
+
+            scene_coordinates = self.transform_depth_to_scene_coordinate_map(depth_map, camera_intrinsics, pose_cam_sfm)
+
+            scene_coordinates_dict = {}
+            scene_coordinates_dict['scene_coordinates'] = scene_coordinates
+            np.savez_compressed(self.path_to_scene_coordinates / (name + '.npz'), **scene_coordinates_dict)
+
+        # OPTION B: read poses & intrinsics from Blender files (poses, intrinsics)
+        # PROBLEM: CAD format, requires conversion first, but done before
+
+        # IDEA: add option to switch between SFM and CAD formats
+
+
+# if __name__ == '__main__':
 
     # path_to_database = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/inputs/database/')
 
@@ -499,27 +499,32 @@ if __name__ == '__main__':
 
     #     ModelConversion.visualize_depth_map(path_to_depth, name, path_to_visualization)
 
-        # depth_name = name.split('.')[0]
-        # if not depth_name.endswith('_depth'):
-        #     depth_name += '_depth'
-        # depth_name = depth_name + '.npz'
-        # depth_map = np.load(path_to_depth / depth_name)['depth']
+    #     depth_name = name.split('.')[0]
+    #     if not depth_name.endswith('_depth'):
+    #         depth_name += '_depth'
+    #     depth_name = depth_name + '.npz'
+    #     depth_map = np.load(path_to_depth / depth_name)['depth']
 
-        # camera_intrinsics = [995.5555555555555, 995.5555555555555, 512.0, 512.0]
+    #     camera_intrinsics = [995.5555555555555, 995.5555555555555, 512.0, 512.0]
 
-        # pose_name = name.split('.')[0] + '.txt'
-        # pose_cam_sfm = np.loadtxt(path_to_poses / pose_name)
+    #     pose_name = name.split('.')[0] + '.txt'
+    #     pose_cam_sfm = np.loadtxt(path_to_poses / pose_name)
 
 
-        # scene_coordinates = ModelConversion.convert_depth_map_to_scene_coordinate_map(depth_map, camera_intrinsics, pose_cam_sfm)
+    #     scene_coordinates = ModelConversion.convert_depth_map_to_scene_coordinate_map(depth_map, camera_intrinsics, pose_cam_sfm)
 
-        # ModelConversion.visualize_scene_coordinate_map(scene_coordinates, path_to_visualization)
+    #     ModelConversion.visualize_scene_coordinate_map(scene_coordinates, path_to_visualization)
+
+
+
 
     
-    path_to_ground_truth = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/ground_truth/')
-    path_to_depth = path_to_ground_truth / 'renders/depth/'
+    # path_to_ground_truth = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/ground_truth/')
+    # path_to_depth = path_to_ground_truth / 'renders/depth/'
 
-    ModelConversion.visualize_depth_map(path_to_depth, 'query_00870470_3859452456_depth.npz')
+    # ModelConversion.visualize_depth_map(path_to_depth, 'query_00870470_3859452456_depth.npz')
+
+
 
 
 
