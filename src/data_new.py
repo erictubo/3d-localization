@@ -43,7 +43,7 @@ class CadModel:
 
     def get_paths(self, prefix: str):
         self.path_to_dataset = path_to_evaluation / f'{prefix}/'
-        self.path_to_ground_truth = self.path_to_dataset / 'ground_truth/'
+        self.path_to_ground_truth = self.path_to_dataset / 'ground truth/'
         self.path_to_inputs = self.path_to_dataset / 'inputs/'
         self.path_to_outputs = self.path_to_dataset / 'outputs/'
 
