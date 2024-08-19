@@ -15,8 +15,8 @@ from visualization import Visualization
 
 if __name__ == "__main__":
 
-    model_names = ['Notre Dame', 'Reichstag']
-    cad_model_ids = ['B', 'E']
+    # model_names = ['Notre Dame', 'Reichstag']
+    # cad_model_ids = ['B', 'E']
 
     model_names = ['Notre Dame']
     cad_model_ids = ['B']
@@ -72,23 +72,24 @@ if __name__ == "__main__":
             query_names = colmap_model.get_all_image_names()
 
             # 2.1. Write query intrinsics text file (input)
-            # colmap_model.write_query_intrinsics_text_file(
-            #     cad_model.path_to_query,
-            #     query_names,
-            #     file_name='queries.txt'
-            # )
+            colmap_model.write_query_intrinsics_text_file(
+                cad_model.path_to_query,
+                query_names,
+                file_name='queries.txt'
+            )
 
             # 2.2. Write query poses text file (ground truth)
-            # colmap_model.write_query_poses_text_file(
-            #     cad_model.path_to_ground_truth,
-            #     query_names,
-            #     file_name='cam_sfm_poses.txt'
-            # )
+            colmap_model.write_query_poses_text_file(
+                cad_model.path_to_ground_truth,
+                query_names,
+                file_name='cam_sfm_poses.txt'
+            )
 
             # 2.3. Convert database intrinsics & poses from CAD to COLMAP format (input)
             cad_to_colmap = ModelConversion(cad_model.path_to_ground_truth, cad_model.path_to_database)
-            cad_to_colmap.convert_depth_maps_from_exr_to_npz()
             cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
+            cad_to_colmap.convert_depth_maps_from_exr_to_npz()
+            cad_to_colmap.convert_depth_to_scene_coordinate_maps()
 
 
             # 2.4. Convert ground truth query poses from COLMAP to CAD format for rendering
