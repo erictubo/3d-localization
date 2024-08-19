@@ -1,6 +1,9 @@
-
 import sys
-sys.path.append('/Users/eric/Developer/model_localization/src/blender/')
+import os
+
+script_directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(script_directory)
+
 
 from render import Blender
 from render_data import blender_dir, models

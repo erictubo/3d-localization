@@ -1,13 +1,14 @@
 import bpy
 import sys
-import argparse
 import os
+import argparse
 import numpy as np
 from math import pi
 from pathlib import Path
 from typing import Tuple
 
-sys.path.append('/Users/eric/Developer/model_localization/src/blender/')
+script_directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(script_directory)
 
 from render import Blender
 from render_data import evaluation_dir, models
