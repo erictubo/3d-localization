@@ -6,14 +6,6 @@ from math import pi
 from colmap.read_write_model import *
 
 
-# from colmap.read_write_model import (
-#     read_model, write_model,
-#     Camera, read_cameras_binary, read_cameras_text, write_cameras_binary, write_cameras_text,
-#     BaseImage, read_images_binary, read_images_text, write_images_binary, write_images_text,
-#     Point3D, read_points3D_binary, read_points3D_text, write_points3d_binary, write_points3d_text,
-# )
-
-
 class ColmapModelReader:
     """
     Import SFM model data from COLMAP database (ground truth):
@@ -288,85 +280,6 @@ class ColmapModelWriter:
         ColmapModelWriter.write_intrinsics_text_file_to_colmap_format(path_to_intrinsics, intrinsincs_file)
         ColmapModelWriter.write_poses_text_file_to_colmap_format(path_to_poses, poses_file, quaternion_first)
 
-        # cameras = {}
-        # camera_id = 0
-
-        # with open(path_to_query / intrinsincs_file, 'r') as file:
-        #     intrinsics_data = file.readlines()
-        #     intrinsics = {}
-        #     for line in intrinsics_data:
-        #         items = line.strip().split(' ')
-        #         query_name = items[0]
-        #         camera_model = items[1]
-        #         w, h = int(items[2]), int(items[3])
-        #         camera_params = np.array([float(i) for i in items[4:]])
-        #         intrinsics[query_name] = (camera_model, w, h, camera_params)
-
-                # print(f"Camera model: {camera_model}, width: {w}, height: {h}, params: {camera_params}")
-
-                # camera_id += 1
-                # cameras[camera_id] = Camera(
-                #     id=camera_id,
-                #     model=camera_model,
-                #     width=w,
-                #     height=h,
-                #     params=camera_params,
-                # )
-                
-        # for query_name, (camera_model, w, h, camera_params) in intrinsics.items():
-        #     camera_id += 1
-        #     cameras[camera_id] = Camera(
-        #         id=camera_id,
-        #         model=camera_model,
-        #         width=w,
-        #         height=h,
-        #         params=camera_params,
-        #     )
-
-        # write_cameras_binary(cameras, path_to_poses / 'cameras.bin')
-        # write_cameras_text(cameras, path_to_poses / 'cameras.txt')
-
-        # images = {}
-        # image_id = 0
-
-        # with open(path_to_poses / poses_file, 'r') as file:
-        #     poses_data = file.readlines()
-        #     for line in poses_data:
-        #         items = line.strip().split(' ')
-        #         query_name = items[0]
-        #         pose = np.array([float(i) for i in items[1:]])
-        #         if quaternion_first:
-        #             qvec, tvec = pose[:4], pose[4:]
-        #         else:
-        #             tvec, qvec = pose[:3], pose[3:]
-        #         image_id += 1
-        #         camera_id = image_id
-        #         images[image_id] = BaseImage(
-        #             id=image_id,
-        #             qvec=qvec,
-        #             tvec=tvec,
-        #             camera_id=camera_id,
-        #             name=query_name,
-        #             xys=np.array([]),
-        #             point3D_ids=np.array([]),
-        #         )
-
-        # for query_name, pose in poses.items():
-        #     image_id += 1
-        #     camera_id = image_id
-        #     images[image_id] = BaseImage(
-        #         id=image_id,
-        #         qvec=pose[3:],
-        #         tvec=pose[:3],
-        #         camera_id=camera_id,
-        #         name=query_name,
-        #         xys=np.array([]),
-        #         point3D_ids=np.array([]),
-        #     )
-
-        # write_images_binary(images, path_to_poses / 'images.bin')
-        # write_images_text(images, path_to_poses / 'images.txt')
-
 
 class ColmapModelConverter:
 
@@ -424,6 +337,8 @@ class ColmapModelConverter:
 
 if __name__ == '__main__':
 
+    pass
+
     # from data_new import Model, CadModel
 
     # model = Model('Notre Dame')
@@ -476,15 +391,12 @@ if __name__ == '__main__':
     Notre Dame E
     '''
 
-    output_path = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_E/outputs/meshloc_out/patch2pix/')
-    poses_file = '20_patch2pix_aachen_v1_1__20.0_keypoint_clusters_POSELIB+REF_min_10000_max_100000_ref_1.0_0.25_bias_0.0_0.0.txt'
-    intrinsics_file = 'queries.txt'
+    # output_path = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_E/outputs/meshloc_out/patch2pix/')
+    # poses_file = '20_patch2pix_aachen_v1_1__20.0_keypoint_clusters_POSELIB+REF_min_10000_max_100000_ref_1.0_0.25_bias_0.0_0.0.txt'
+    # intrinsics_file = 'queries.txt'
 
-    ColmapModelWriter.write_poses_text_file_to_colmap_format(output_path, poses_file, quaternion_first=True)
-    ColmapModelWriter.write_intrinsics_text_file_to_colmap_format(output_path, intrinsics_file)
-
-
-
+    # ColmapModelWriter.write_poses_text_file_to_colmap_format(output_path, poses_file, quaternion_first=True)
+    # ColmapModelWriter.write_intrinsics_text_file_to_colmap_format(output_path, intrinsics_file)
 
 
 
