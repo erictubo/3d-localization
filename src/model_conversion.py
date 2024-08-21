@@ -9,11 +9,7 @@ from matplotlib import pyplot as plt
 import OpenEXR
 import Imath
 
-from colmap.read_write_model import (
-    Camera, write_cameras_binary, write_cameras_text, read_cameras_binary, read_cameras_text,
-    BaseImage, write_images_binary, write_images_text, read_images_binary, read_images_text,
-    Point3D, write_points3D_binary, write_points3D_text,
-)
+from colmap.read_write_model import *
 
 
 def convert_pose_to_matrix(pose: np.ndarray) -> np.ndarray:
@@ -483,7 +479,9 @@ class ModelConversion:
         # IDEA: add option to switch between SFM and CAD formats
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
+
+    pass
 
     # path_to_database = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/inputs/database/')
 
@@ -517,13 +515,11 @@ class ModelConversion:
 
 
 
-
     
     # path_to_ground_truth = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/ground_truth/')
     # path_to_depth = path_to_ground_truth / 'renders/depth/'
 
     # ModelConversion.visualize_depth_map(path_to_depth, 'query_00870470_3859452456_depth.npz')
-
 
 
 
