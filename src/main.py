@@ -7,7 +7,7 @@ from hloc import extract_features, pairs_from_retrieval
 from interface_blender import render_query
 from interface_meshloc import run_meshloc
 
-from data_new import Model, CadModel
+from data import Model, CadModel
 from colmap_model import ColmapModelReader, ColmapModelWriter
 from model_conversion import ModelConversion
 from visualization import Visualization
@@ -34,65 +34,35 @@ if __name__ == "__main__":
             cad_model = CadModel(model, cad_model_id, target_name)
 
 
-            # 1. IMAGE RETRIEVAL
-            print('1. Image Retrieval...')
-
-            # 1.1. Extract global features
-            cad_model.path_to_global_features = extract_features.main(
-                conf=extract_features.confs['netvlad'],
-                image_dir=cad_model.path_to_inputs,
-                export_dir=cad_model.path_to_features,
-            )
-
-            # 1.2 Match global features
-            pairs_from_retrieval.main(
-                descriptors=cad_model.path_to_global_features,
-                output=cad_model.path_to_retrieval_pairs,
-                num_matched=num_matched,
-                db_prefix='database/images/',
-                query_prefix='query/images/',
-            )
-
-            # 1.3 Convert retrieval pairs to MeshLoc format
-            with open(cad_model.path_to_retrieval_pairs, 'r') as file_in:
-                with open(cad_model.path_to_retrieval_pairs_meshloc, 'w') as file_out:
-                    for line in file_in.readlines():
-                        query, db = line.strip().split(' ')
-                        query, db = query.split('/')[-1], db.split('/')[-1]
-                        file_out.write(f'{query}, {db}, 0.0\n')
-
-
-
-
-            # 2. INPUT & GROUND TRUTH CONVERSION
-            print('2. Input & Ground Truth Conversion...')
+            # 1. INPUT & GROUND TRUTH CONVERSION
+            print('1. Input & Ground Truth Conversion...')
             print('   (Requires 3D Registration matrix T_ref)')
 
             colmap_model = ColmapModelReader(model.path_to_reference)
             query_names = colmap_model.get_all_image_names()
 
-            # 2.1. Write query intrinsics text file (input)
+            # 1.1. Write query intrinsics text file (input)
             colmap_model.write_query_intrinsics_text_file(
                 cad_model.path_to_query,
                 query_names,
                 file_name='queries.txt'
             )
 
-            # 2.2. Write query poses text file (ground truth)
+            # 1.2. Write query poses text file (ground truth)
             colmap_model.write_query_poses_text_file(
                 cad_model.path_to_ground_truth,
                 query_names,
                 file_name='cam_sfm_poses.txt'
             )
 
-            # 2.3. Convert database intrinsics & poses from CAD to COLMAP format (input)
+            # 1.3. Convert database intrinsics & poses from CAD to COLMAP format (input)
             cad_to_colmap = ModelConversion(cad_model.path_to_ground_truth, cad_model.path_to_database)
             cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
             cad_to_colmap.convert_depth_maps_from_exr_to_npz()
             cad_to_colmap.convert_depth_to_scene_coordinate_maps()
 
 
-            # 2.4. Convert ground truth query poses from COLMAP to CAD format for rendering
+            # 1.4. Convert ground truth query poses from COLMAP to CAD format for rendering
             ground_truth_poses_cam_sfm = ColmapModelWriter.read_poses_text_file(cad_model.path_to_ground_truth, 'cam_sfm_poses.txt', quaternion_first=False)
 
             colmap_to_cad = ModelConversion(cad_model.path_to_ground_truth)
@@ -107,7 +77,7 @@ if __name__ == "__main__":
             )
 
 
-            # 2.5. Render & overlay ground truth query poses
+            # 1.5. Render & overlay ground truth query poses
             if input("Render ground truth query poses? (y/n): ") == 'y':
 
                 render_query(
@@ -125,6 +95,38 @@ if __name__ == "__main__":
                         cad_model.path_to_ground_truth / 'renders/images/',
                         cad_model.path_to_ground_truth / 'overlays/',
                         )
+
+
+
+
+            # 2. IMAGE RETRIEVAL
+            print('2. Image Retrieval...')
+
+            if input("Retrieve images for MeshLoc? (y/n): ") == 'y':
+
+                # 2.1. Extract global features
+                cad_model.path_to_global_features = extract_features.main(
+                    conf=extract_features.confs['netvlad'],
+                    image_dir=cad_model.path_to_inputs,
+                    export_dir=cad_model.path_to_features,
+                )
+
+                # 2.2 Match global features
+                pairs_from_retrieval.main(
+                    descriptors=cad_model.path_to_global_features,
+                    output=cad_model.path_to_retrieval_pairs,
+                    num_matched=num_matched,
+                    db_prefix='database/images/',
+                    query_prefix='query/images/',
+                )
+
+                # 2.3 Convert retrieval pairs to MeshLoc format
+                with open(cad_model.path_to_retrieval_pairs, 'r') as file_in:
+                    with open(cad_model.path_to_retrieval_pairs_meshloc, 'w') as file_out:
+                        for line in file_in.readlines():
+                            query, db = line.strip().split(' ')
+                            query, db = query.split('/')[-1], db.split('/')[-1]
+                            file_out.write(f'{query}, {db}, 0.0\n')
 
 
 
