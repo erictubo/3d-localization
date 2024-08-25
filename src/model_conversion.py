@@ -59,8 +59,11 @@ class ModelConversion:
             ):
         
         self.path_to_ground_truth = path_to_ground_truth
-        self.T_cad_sfm, self.s_cad_sfm = self.read_registration_data(path_to_ground_truth / 'T_cad_sfm.txt')
-        self.T_sfm_cad = np.linalg.inv(self.T_cad_sfm)
+        # self.T_cad_sfm, self.s_cad_sfm = self.read_registration_data(path_to_ground_truth / 'T_cad_sfm.txt')
+        # self.T_sfm_cad = np.linalg.inv(self.T_cad_sfm)
+        self.T_sfm_cad, self.s_sfm_cad = self.read_registration_data(path_to_ground_truth / 'T_sfm_cad.txt')
+        self.T_cad_sfm = np.linalg.inv(self.T_sfm_cad)
+        self.s_cad_sfm = 1/self.s_sfm_cad
 
         self.path_to_ground_truth = path_to_ground_truth
 
@@ -83,17 +86,17 @@ class ModelConversion:
 
     @staticmethod
     def read_registration_data(file_path: Path) -> np.ndarray:
-        T_cad_sfm = np.loadtxt(file_path)
-        assert T_cad_sfm.shape == (4,4), T_cad_sfm.shape
+        T = np.loadtxt(file_path)
+        assert T.shape == (4,4), T.shape
 
-        scale, shear, angles, translate, perspective = decompose_matrix(T_cad_sfm)
-        q_cad_sfm = Quaternion(matrix=Rotation.from_euler('xyz', angles).as_matrix()).inverse
-        pose_cad_sfm = np.hstack([translate, q_cad_sfm.q])
-        s_cad_sfm = np.average(scale)
-        print('SFM pose (CAD frame): ', pose_cad_sfm)
-        print('SFM vs. CAD scale: ', s_cad_sfm)
+        scale, shear, angles, translate, perspective = decompose_matrix(T)
+        q = Quaternion(matrix=Rotation.from_euler('xyz', angles).as_matrix()).inverse
+        pose = np.hstack([translate, q.q])
+        scale = np.average(scale)
+        print('Pose:', pose)
+        print('Scale:', scale)
 
-        return T_cad_sfm, s_cad_sfm
+        return T, scale
     
 
     """
@@ -365,10 +368,11 @@ class ModelConversion:
         Convert EXR depth maps to NPZ format.
         """
         name = name.split('.')[0]
-        # if not name.endswith('_depth'):
-        #     name += '_depth'
+        if os.path.exists(path_to_depth / (name + '.npz')):
+            print(f"NPZ depth map {name} already exists, skipping")
+            return
+        
         depth_name = name + '.exr'
-
         file = OpenEXR.InputFile(str(path_to_depth / depth_name))
 
         # Get the header and data window
@@ -454,6 +458,9 @@ class ModelConversion:
 
         for image_name in self.image_names:
             name = image_name.split('.')[0]
+            if os.path.exists(self.path_to_scene_coordinates / (name + '.npz')):
+                print(f"Scene coordinate map {name} already exists, skipping")
+                return
 
             image_id = [k for k, v in images.items() if v.name == image_name][0]
 
