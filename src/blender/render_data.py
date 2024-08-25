@@ -9,11 +9,12 @@ models: dict = {
     'notre dame B':{
         'prefix' : 'notre_dame_B/',
         'blend_file': f'{blender_dir}assets/models/notre dame B/notre dame B.blend',
-        'target_name': 'SketchUp',
+        'target_name': 'Model',
     },
     'notre dame E':{
         'prefix' : 'notre_dame_E/',
         'blend_file': f'{blender_dir}assets/models/notre dame E/notre dame E.blend',
-        'target_name': 'notre-dame-de-paris-complete-miniworld3d',
-    }
+        'target_name': 'Model',
+    },
+    
 }

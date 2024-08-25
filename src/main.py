@@ -20,8 +20,6 @@ if __name__ == "__main__":
 
     model_names = ['Notre Dame']
     cad_model_ids = ['B']
-    target_name = 'SketchUp'
-    # target_name = 'notre-dame-de-paris-complete-miniworld3d'
 
     num_matched = 25
     # num_matched = 20
@@ -31,14 +29,14 @@ if __name__ == "__main__":
         model = Model(model_name)
         
         for cad_model_id in cad_model_ids:
-            cad_model = CadModel(model, cad_model_id, target_name)
+            cad_model = CadModel(model, cad_model_id)
 
 
             # 1. INPUT & GROUND TRUTH CONVERSION
             print('1. Input & Ground Truth Conversion...')
             print('   (Requires 3D Registration matrix T_ref)')
 
-            colmap_model = ColmapModelReader(model.path_to_reference)
+            colmap_model = ColmapModelReader(model.path_to_reference_model)
             query_names = colmap_model.get_all_image_names()
 
             # 1.1. Write query intrinsics text file (input)
@@ -57,8 +55,14 @@ if __name__ == "__main__":
 
             # 1.3. Convert database intrinsics & poses from CAD to COLMAP format (input)
             cad_to_colmap = ModelConversion(cad_model.path_to_ground_truth, cad_model.path_to_database)
+            
+            print('   Converting intrinsics and poses to COLMAP format ...')
             cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
+
+            print('   Converting depth maps to NPZ ...')
             cad_to_colmap.convert_depth_maps_from_exr_to_npz()
+
+            print('   Creating scene coordinate maps ...')
             cad_to_colmap.convert_depth_to_scene_coordinate_maps()
 
 

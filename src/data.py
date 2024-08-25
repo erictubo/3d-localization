@@ -1,18 +1,22 @@
+import os
+
 from pathlib import Path
 
 
-path_to_3d_models = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/3D Models/')
+path_to_models = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/3D Models/')
 path_to_evaluation = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/')
 
-path_to_blender = Path('/Users/eric/Library/Mobile Documents/com~apple~CloudDocs/Blender/')
+path_to_renders = Path('/Users/eric/Library/Mobile Documents/com~apple~CloudDocs/Blender/renders/')
 
 
 class Model:
 
     def __init__(self, name: str):
-        self.name = name
+        self.name = name.title()
+        print(f'Model: {self.name}')
 
-        self.path_to_reference = path_to_3d_models / name / 'Reference/dense/sparse/'
+        self.path_to_reference_model = path_to_models / name / 'Reference/dense/sparse/'
+        self.path_to_reference_images = path_to_models / name / 'Reference/dense/images/'
 
 
 class CadModel:
@@ -30,16 +34,18 @@ class CadModel:
         - meshloc_out
     """
 
-    def __init__(self, model: Model, id: str, target_name: str = None):
+    def __init__(self, model: Model, id: str, target_name: str = 'Model'):
         self.model = model
         self.id = id.upper()
-        self.prefix = self.model.name.replace(' ', '_').lower() + f'_{id}'        
+        print(f'CAD Model: {self.model.name} {self.id}')
+        self.prefix = f'{self.model.name.lower()} {id}' # e.g. notre dame B
+        
+        self.blend_file = path_to_models / model.name / self.id / f'{self.prefix}.blend'
+        assert os.path.exists(self.blend_file), f"Blend file not found: {self.blend_file}"
+
         self.get_paths(self.prefix)
         
-        if target_name: 
-            blend_name = self.prefix.replace('_', ' ')
-            self.blend_file = path_to_blender / f'assets/models/{blend_name}/{blend_name}.blend'
-            self.target_name = target_name
+        self.target_name = target_name
 
     def get_paths(self, prefix: str):
         self.path_to_dataset = path_to_evaluation / f'{prefix}/'
@@ -67,6 +73,5 @@ class CadModel:
 
 if __name__ == '__main__':
     
-    notre_dame = Model('Notre Dame')
-
-    notre_dame_B = CadModel(notre_dame, 'B', 'SketchUp')
+    notre_dame = Model('notre dame')
+    notre_dame_B = CadModel(notre_dame, 'b')
