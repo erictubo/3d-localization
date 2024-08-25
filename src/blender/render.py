@@ -11,7 +11,7 @@ class Blender:
     def __init__(self,
                  blend_file: str,
                  render_dir: str,
-                 target_name: str,
+                 target_name: str = 'Model',
                  camera_name: str = 'Camera',
                  default_image_size: 'tuple[int]' = (1024, 1024),
                  default_focal_length_mm: float = 35,
@@ -28,7 +28,12 @@ class Blender:
         bpy.ops.wm.open_mainfile(filepath=blend_file)
 
         # Set directories
+        if render_dir[-1] != '/':
+            render_dir += '/'
+
         self.render_dir = render_dir
+
+        print('Directory:' + self.render_dir)
 
         self.images_prefix = images_prefix
         self.depth_prefix = depth_prefix
@@ -47,6 +52,13 @@ class Blender:
         self.target = bpy.data.objects[target_name]
         self.camera = bpy.data.objects[camera_name]
         self.light = bpy.data.objects['Light']
+
+        # Set light to sun and strength to 10
+        self.light.data.type = 'SUN'
+        self.light.data.energy = 3
+
+        # Set lens end clip to 1000
+        self.camera.data.clip_end = 1000
 
         # Set rotation mode
         self.target.rotation_mode = 'QUATERNION'
@@ -493,6 +505,11 @@ class Blender:
         Render images (+ depth and edges if enabled), save camera pose and depth values.
         """
         image_file = os.path.join(self.images_dir, f'{id}.png')
+
+        if os.path.exists(self.image_file):
+            print(f"Render {id} already exists, skipping")
+            return
+        
         bpy.context.scene.render.filepath = image_file
 
         if self.edge_rendering:
