@@ -506,7 +506,7 @@ class Blender:
         """
         image_file = os.path.join(self.images_dir, f'{id}.png')
 
-        if os.path.exists(self.image_file):
+        if os.path.exists(image_file):
             print(f"Render {id} already exists, skipping")
             return
         
