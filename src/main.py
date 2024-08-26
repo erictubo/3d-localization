@@ -15,14 +15,14 @@ from visualization import Visualization
 
 if __name__ == "__main__":
 
-    # model_names = ['Notre Dame', 'Reichstag']
-    # cad_model_ids = ['B', 'E']
+    model_names = ['Reichstag']
+    cad_model_ids = ['A', 'B']
 
-    model_names = ['Notre Dame']
-    cad_model_ids = ['B']
+    # model_names = ['Notre Dame']
+    # cad_model_ids = ['B']
 
-    num_matched = 25
-    # num_matched = 20
+    # Image retrieval parameters
+    num_matched = 25 #20
 
 
     for model_name in model_names:
@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
             # 1.3. Convert database intrinsics & poses from CAD to COLMAP format (input)
             cad_to_colmap = ModelConversion(cad_model.path_to_ground_truth, cad_model.path_to_database)
-            
+
             print('   Converting intrinsics and poses to COLMAP format ...')
             cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
 
@@ -91,7 +91,7 @@ if __name__ == "__main__":
                     intrinsics_file = str(cad_model.path_to_query / 'queries.txt'),
                     poses_file = str(cad_model.path_to_ground_truth / 'cad_cam_poses.txt'),
                     quaternion_first = False,
-                    limit=100,
+                    limit=250,
                 )
 
                 Visualization.overlay_query_and_rendered_images(
@@ -148,63 +148,65 @@ if __name__ == "__main__":
             # 4. EVALUATION
             print('4. Evaluation...')
 
-            output_poses_file = f'{num_matched}_patch2pix_aachen_v1_1__20.0_keypoint_clusters_POSELIB+REF_min_10000_max_100000_ref_1.0_0.25_bias_0.0_0.0.txt'
-            config = 'patch2pix/'
+            if input("Evaluate? (y/n): ") == 'y':
+
+                output_poses_file = f'{num_matched}_patch2pix_aachen_v1_1__20.0_keypoint_clusters_POSELIB+REF_min_10000_max_100000_ref_1.0_0.25_bias_0.0_0.0.txt'
+                config = 'patch2pix/'
 
 
-            # 4.1. Convert to COLMAP format for visualization
-            ColmapModelWriter.write_poses_text_file_to_colmap_format(cad_model.path_to_meshloc_out / config, output_poses_file, quaternion_first=True)
+                # 4.1. Convert to COLMAP format for visualization
+                ColmapModelWriter.write_poses_text_file_to_colmap_format(cad_model.path_to_meshloc_out / config, output_poses_file, quaternion_first=True)
 
 
-            # 4.2. Convert output query poses to CAD format for rendering
-            output_poses_cam_sfm = ColmapModelWriter.read_poses_text_file(cad_model.path_to_meshloc_out / config, output_poses_file, quaternion_first=True)
+                # 4.2. Convert output query poses to CAD format for rendering
+                output_poses_cam_sfm = ColmapModelWriter.read_poses_text_file(cad_model.path_to_meshloc_out / config, output_poses_file, quaternion_first=True)
 
-            output_poses_cad_cam = colmap_to_cad.transform_poses_from_colmap_to_cad_format(output_poses_cam_sfm, to_blender_format=True)
-            
-            ColmapModelReader.write_poses_text_file(
-                poses=output_poses_cad_cam,
-                path_to_output=cad_model.path_to_meshloc_out / config,
-                file_name='cad_cam_poses.txt',
-                quaternion_first=False
-            )
-
-
-            # 4.3. Render output query poses & overlay with query images
-
-            if input("Render output query poses? (y/n): ") == 'y':
-
-                render_query(
-                    blend_file = str(cad_model.blend_file),
-                    target_name = cad_model.target_name,
-                    render_dir = str(cad_model.path_to_meshloc_out / config / 'renders/'),
-                    intrinsics_file = str(cad_model.path_to_query / 'queries.txt'),
-                    poses_file = str(cad_model.path_to_meshloc_out / config / 'cad_cam_poses.txt'),
-                    quaternion_first = False,
-                    limit=100,
+                output_poses_cad_cam = colmap_to_cad.transform_poses_from_colmap_to_cad_format(output_poses_cam_sfm, to_blender_format=True)
+                
+                ColmapModelReader.write_poses_text_file(
+                    poses=output_poses_cad_cam,
+                    path_to_output=cad_model.path_to_meshloc_out / config,
+                    file_name='cad_cam_poses.txt',
+                    quaternion_first=False
                 )
 
-                Visualization.overlay_query_and_rendered_images(
-                    cad_model.path_to_query_images,
-                    cad_model.path_to_meshloc_out / config / 'renders/images',
-                    cad_model.path_to_meshloc_out / config / 'overlays/',
+
+                # 4.3. Render output query poses & overlay with query images
+
+                if input("Render output query poses? (y/n): ") == 'y':
+
+                    render_query(
+                        blend_file = str(cad_model.blend_file),
+                        target_name = cad_model.target_name,
+                        render_dir = str(cad_model.path_to_meshloc_out / config / 'renders/'),
+                        intrinsics_file = str(cad_model.path_to_query / 'queries.txt'),
+                        poses_file = str(cad_model.path_to_meshloc_out / config / 'cad_cam_poses.txt'),
+                        quaternion_first = False,
+                        limit=100,
                     )
 
+                    Visualization.overlay_query_and_rendered_images(
+                        cad_model.path_to_query_images,
+                        cad_model.path_to_meshloc_out / config / 'renders/images',
+                        cad_model.path_to_meshloc_out / config / 'overlays/',
+                        )
 
-            # 4.5. Calculate metrics (in CAD frame) using ground_truth_poses_cad_cam and output_poses_cad_cam
 
-            for query_name in output_poses_cad_cam.keys():
-                print(f'Query {query_name}:')
-                ground_truth_translation = ground_truth_poses_cad_cam[query_name][:3]
-                output_translation = output_poses_cad_cam[query_name][:3]
+                # 4.5. Calculate metrics (in CAD frame) using ground_truth_poses_cad_cam and output_poses_cad_cam
 
-                ground_truth_rotation = Quaternion(ground_truth_poses_cad_cam[query_name][3:])
-                output_rotation = Quaternion(output_poses_cad_cam[query_name][3:])
+                for query_name in output_poses_cad_cam.keys():
+                    print(f'Query {query_name}:')
+                    ground_truth_translation = ground_truth_poses_cad_cam[query_name][:3]
+                    output_translation = output_poses_cad_cam[query_name][:3]
 
-                # Calculate translation error
-                translation_errors = output_translation - ground_truth_translation
-                print(f'Translation errors [m]: {translation_errors}')
+                    ground_truth_rotation = Quaternion(ground_truth_poses_cad_cam[query_name][3:])
+                    output_rotation = Quaternion(output_poses_cad_cam[query_name][3:])
 
-                # Calculate rotation error
-                rotation_error = output_rotation * ground_truth_rotation.inverse
-                rotation_error = rotation_error.angle * 180 / np.pi
-                print(f'Rotation error [deg]: {rotation_error}')
+                    # Calculate translation error
+                    translation_errors = output_translation - ground_truth_translation
+                    print(f'Translation errors [m]: {translation_errors}')
+
+                    # Calculate rotation error
+                    rotation_error = output_rotation * ground_truth_rotation.inverse
+                    rotation_error = rotation_error.angle * 180 / np.pi
+                    print(f'Rotation error [deg]: {rotation_error}')
