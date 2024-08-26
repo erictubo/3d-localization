@@ -28,6 +28,8 @@ class ColmapModelReader:
         Get all image names.
         """
         image_names = [image.name for image in self.images.values()]
+        image_names.sort()
+        
         return image_names
         
     def get_query_image_id(self, image_name: str) -> int:
