@@ -29,7 +29,8 @@ class GlaceConversion:
 
         self.path_to_input = path_to_input
         self.path_to_input_database = path_to_input / database_prefix
-        self.path_to_input_query = path_to_input / query_prefix
+        if query:
+            self.path_to_input_query = path_to_input / query_prefix
 
         self.path_to_output = path_to_output
         self.path_to_output_train = path_to_output / train_prefix
@@ -212,19 +213,42 @@ class GlaceConversion:
 
 
 if __name__ == '__main__':
+    # GlaceConversion(
+    #     path_to_input=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B_new/inputs/'),
+    #     path_to_output=Path('/Users/eric/Developer/glace/datasets/notre dame B/'),
+    #     database=True,
+    #     query=True,
+    #     query_names=[
+    #             '00145492_2294287255.jpg',
+    #             '00870470_3859452456.jpg',
+    #             '01133173_279144982.jpg',
+    #             '01333333_3920521666.jpg',
+    #             '05270949_6179349375.jpg',
+    #             '05353713_5401929533.jpg',
+    #             '07985698_4822004965.jpg',
+    #         ],
+    #     path_to_colmap_model=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/3D Models/Notre Dame/Reference/dense/sparse/')
+    # )
+
+
+    # Notre Dame B with orbit renders
+    # GlaceConversion(
+    #     path_to_input=Path('/home/johndoe/Documents/data/Evaluation/notre dame B/inputs/'),
+    #     path_to_output=Path('/home/johndoe/Documents/data/GLACE/notre dame B rendered/'),
+    #     database=True,
+    #     query=True,
+    #     query_names=None,
+    #     path_to_colmap_model=Path('/home/johndoe/Documents/data/3D Models/Notre Dame/Reference/dense/sparse')
+    # )
+
+    # Notre Dame B with real images as training
+
+
+    # Notre Dame B with rendered SFM poses
     GlaceConversion(
-        path_to_input=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B_new/inputs/'),
-        path_to_output=Path('/Users/eric/Developer/glace/datasets/notre dame B/'),
+        path_to_input=Path('/home/johndoe/Documents/data/Evaluation/notre dame B/ground truth/'),
+        path_to_output=Path('/home/johndoe/Documents/data/GLACE/notre dame B rendered/'),
+        database_prefix='renders/',
         database=True,
-        query=True,
-        query_names=[
-                '00145492_2294287255.jpg',
-                '00870470_3859452456.jpg',
-                '01133173_279144982.jpg',
-                '01333333_3920521666.jpg',
-                '05270949_6179349375.jpg',
-                '05353713_5401929533.jpg',
-                '07985698_4822004965.jpg',
-            ],
-        path_to_colmap_model=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/3D Models/Notre Dame/Reference/dense/sparse/')
+        query=False,
     )

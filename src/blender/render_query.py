@@ -11,7 +11,7 @@ script_directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_directory)
 
 from render import Blender
-from render_data import evaluation_dir, models
+from render_data import evaluation_dir
 
 def render_query_poses(
         blender: Blender,
@@ -23,54 +23,62 @@ def render_query_poses(
     """
     Render query images with pose and intrinsics.
     """
-    i = 0
     with open(poses_file, 'r') as f, open(intrinsics_file, 'r') as g:
         poses_data = f.readlines()
         intrinsics_data = g.readlines()
-        for poses in poses_data:
-            items = poses.strip().split(' ')
-            query_name = items[0]
+        assert len(poses_data) == len(intrinsics_data)
+
+        total = len(poses_data)
+        if limit:
+            total = max(limit, total)
+
+        print(f"Rendering {total} images ...")
+
+        for i, (pose, intrinsics) in enumerate(zip(poses_data, intrinsics_data)):
+            pose_items = pose.strip().split(' ')
+            name = pose_items[0]
+            
+            intrinsics_items = intrinsics.strip().split(' ')
+            name_intrinsics = intrinsics_items[0]
+
+            assert name == name_intrinsics, f'Name does not match.'
+
             if quaternion_first:
-                pose = np.array(items[1:], dtype=float)
+                pose = np.array(pose_items[1:], dtype=float)
                 pose = np.concatenate([pose[4:], pose[:4]])
             else:
-                pose = np.array(items[1:], dtype=float)
+                pose = np.array(pose_items[1:], dtype=float)
+
+            camera_model, w, h, *camera_params = intrinsics_items[1:]
+            camera_params = np.array(camera_params, dtype=float)
+            w, h = int(w), int(h)
+
+            if camera_model == 'PINHOLE':
+                assert camera_params.shape == (4,), camera_params.shape
+                fx, fy, cx, cy = camera_params
+                if w > h:
+                    f = fx
+                else:
+                    f = fy
+            else:
+                raise ValueError(f"Camera model {camera_model} not implemented.")
             
-            for intrinsics in intrinsics_data:
-                items = intrinsics.strip().split(' ')
-                query_name_intrinsics = items[0]
+            print('Query:', name)
+            print('Pose:', pose)
+            print('Intrinsics:', camera_model, w, h, camera_params)
 
-                if query_name == query_name_intrinsics:
-                    camera_model, w, h, *camera_params = items[1:]
-                    camera_params = np.array(camera_params, dtype=float)
-                    w, h = int(w), int(h)
+            blender.set_camera_pose(pose)
+            blender.set_camera_intrinsics(w, h, f, 'PIX', cx, cy)
+            blender.set_lighting_pose(pose)
 
-                    if camera_model == 'PINHOLE':
-                        assert camera_params.shape == (4,), camera_params.shape
-                        fx, fy, cx, cy = camera_params
-                        if w > h:
-                            f = fx
-                        else:
-                            f = fy
-                    else:
-                        raise ValueError(f"Camera model {camera_model} not implemented.")
+            id = f'query_{name.replace(".jpg", "")}'
+            blender.render(id)
 
-                    # fov_deg = calculate_field_of_view_from_intrinsics(camera_model, w, h, camera_params)
-                    
-                    print('Query:', query_name)
-                    print('Pose:', pose)
-                    print('Intrinsics:', camera_model, w, h, camera_params)
+            print(f"Render {i} / {total} ...")
 
-                    blender.set_camera_pose(pose)
-                    blender.set_camera_intrinsics(w, h, f, 'PIX', cx, cy)
-                    blender.set_lighting_pose(pose)
-
-                    id = f'query_{query_name.replace(".jpg", "")}'
-                    blender.render(id)
-
-                    i += 1
-            if limit is not None and i >= limit:
-                break
+            if limit:
+                if i+1 >= limit:
+                    break
 
 def main(
         blend_file: str,
