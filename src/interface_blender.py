@@ -1,10 +1,19 @@
 import subprocess
 import sys
+from typing import List
 
 blender_path = "/Applications/Blender.app/Contents/MacOS/Blender"
 
 
-# def render_database():
+# def render_database(
+#         blend_file: str,
+#         target_name: str,
+#         render_dir: str,
+#         distances: List[float],
+#         h_steps: List[float],
+#         heights: List[float],
+#         focal_lengths: List[float],
+#     ) -> None:
 
 #     script_path = sys.path[0] + "/blender/render_database.py"
 
@@ -13,6 +22,14 @@ blender_path = "/Applications/Blender.app/Contents/MacOS/Blender"
 #         "--background",
 #         "--python", script_path,
 #         "--",
+#         "--blend_file", blend_file,
+#         "--target_name", target_name,
+#         "--render_dir", render_dir,
+#         # TODO: set up blend file first, then render consecutively
+#         "--distances", distances,
+#         "--h_steps", h_steps,
+#         "--heights", heights,
+#         "--focal_lengths", focal_lengths,
 #     ]
 
 #     subprocess.run(command)
