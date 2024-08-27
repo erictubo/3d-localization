@@ -15,14 +15,17 @@ from visualization import Visualization
 
 if __name__ == "__main__":
 
-    model_names = ['Reichstag']
-    cad_model_ids = ['A', 'B']
+    # model_names = ['Reichstag']
+    # cad_model_ids = ['A', 'B']
 
-    # model_names = ['Notre Dame']
-    # cad_model_ids = ['B']
+    model_names = ['Notre Dame']
+    cad_model_ids = ['B']
 
-    # Image retrieval parameters
-    num_matched = 25 #20
+    # Limit for GT rendering
+    limit = 4000
+
+    # Number of matches for image retrieval (MeshLoc)
+    num_matched = 25
 
 
     for model_name in model_names:
@@ -91,7 +94,7 @@ if __name__ == "__main__":
                     intrinsics_file = str(cad_model.path_to_query / 'queries.txt'),
                     poses_file = str(cad_model.path_to_ground_truth / 'cad_cam_poses.txt'),
                     quaternion_first = False,
-                    limit=250,
+                    limit=limit,
                 )
 
                 Visualization.overlay_query_and_rendered_images(
@@ -182,7 +185,7 @@ if __name__ == "__main__":
                         intrinsics_file = str(cad_model.path_to_query / 'queries.txt'),
                         poses_file = str(cad_model.path_to_meshloc_out / config / 'cad_cam_poses.txt'),
                         quaternion_first = False,
-                        limit=100,
+                        limit=limit,
                     )
 
                     Visualization.overlay_query_and_rendered_images(
