@@ -1,7 +1,8 @@
 import subprocess
 import sys
 
-blender_path = "/Applications/Blender.app/Contents/MacOS/Blender"
+blender_path = "/snap/bin/blender" # Linux
+# blender_path = "/Applications/Blender.app/Contents/MacOS/Blender" # macOS
 
 
 # def render_database():
