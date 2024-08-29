@@ -39,6 +39,25 @@ def convert_matrix_to_pose(T: np.ndarray) -> np.ndarray:
 
     return pose
 
+def reverse_camera_matrix_for_blender(T: np.ndarray, frame: str = 'cam') -> np.ndarray:
+        """
+        Rotate camera matrix 180 degrees about the x-axis to match Blender camera (facing -z direction).
+        Frame: default CAM because can simply rotate around camera's own axis
+        """
+        assert T.shape == (4,4), T.shape
+
+        if frame.lower == 'cam':
+            # rotate about camera's x-axis by 180 degrees
+            T_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T
+
+        else:
+            # first invert the matrix, then rotate about x-axis by 180 degrees, then invert again
+            T_inv = np.linalg.inv(T)
+            T_inv_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T_inv
+            T_rev = np.linalg.inv(T_inv_rev)
+        
+        return T_rev
+
 
 class ModelConversion:
     """
@@ -104,15 +123,7 @@ class ModelConversion:
     """
     
     @staticmethod
-    def reverse_camera_matrix_for_blender(T: np.ndarray) -> np.ndarray:
-        """
-        Rotate camera matrix 180 degrees about the x-axis to match Blender camera (facing -z direction).
-        """
-        assert T.shape == (4,4), T.shape
-        T_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T
-        return T_rev
-
-    def reverse_camera_pose_for_blender(self, pose: np.ndarray) -> np.ndarray:
+    def reverse_camera_pose_for_blender(pose: np.ndarray) -> np.ndarray:
         """
         Rotate camera pose 180 degrees about the x-axis to match Blender camera (facing -z direction).
         """
@@ -123,7 +134,7 @@ class ModelConversion:
         else:
             raise ValueError(f'Pose shape {pose.shape} not valid - should be (7,) or (4,4).')
         
-        T_rev = self.reverse_camera_matrix_for_blender(T)
+        T_rev = reverse_camera_matrix_for_blender(T)
 
         if pose.shape == (7,):
             pose_rev = convert_matrix_to_pose(T_rev)
@@ -152,7 +163,7 @@ class ModelConversion:
             raise ValueError(f'Pose shape {pose_cam_sfm.shape} not valid - should be (7,) or (4,4).')
 
         if to_blender_format:
-            T_cam_sfm = self.reverse_camera_matrix_for_blender(T_cam_sfm)
+            T_cam_sfm = reverse_camera_matrix_for_blender(T_cam_sfm)
 
         # CAM in SFM frame
         T_sfm_cam = np.linalg.inv(T_cam_sfm)
@@ -215,7 +226,7 @@ class ModelConversion:
         T_cam_sfm = compose_matrix(None, None, angles, translate)
 
         if from_blender_format:
-            T_cam_sfm = self.reverse_camera_matrix_for_blender(T_cam_sfm)
+            T_cam_sfm = reverse_camera_matrix_for_blender(T_cam_sfm)
 
         pose_cam_sfm = convert_matrix_to_pose(T_cam_sfm)
         
