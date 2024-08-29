@@ -116,10 +116,21 @@ class ModelConversion:
         """
         Rotate camera pose 180 degrees about the x-axis to match Blender camera (facing -z direction).
         """
-        assert pose.shape == (7,), pose.shape
-        T = convert_pose_to_matrix(pose)
+        if pose.shape == (7,):
+            T = convert_pose_to_matrix(pose)
+        elif pose.shape == (4,4):
+            T = pose
+        else:
+            raise ValueError(f'Pose shape {pose.shape} not valid - should be (7,) or (4,4).')
+        
         T_rev = self.reverse_camera_matrix_for_blender(T)
-        pose_rev = convert_matrix_to_pose(T_rev)
+
+        if pose.shape == (7,):
+            pose_rev = convert_matrix_to_pose(T_rev)
+        elif pose.shape == (4,4):
+            pose_rev = T_rev
+
+        assert pose.shape == pose_rev.shape, (pose.shape, pose_rev.shape)
         return pose_rev
 
     def transform_pose_from_colmap_to_cad_format(
@@ -133,7 +144,12 @@ class ModelConversion:
         """
 
         # SFM in CAM frame
-        T_cam_sfm = convert_pose_to_matrix(pose_cam_sfm)
+        if pose_cam_sfm.shape == (7,):
+            T_cam_sfm = convert_pose_to_matrix(pose_cam_sfm)
+        elif pose_cam_sfm.shape == (4,4):
+            T_cam_sfm = pose_cam_sfm
+        else:
+            raise ValueError(f'Pose shape {pose_cam_sfm.shape} not valid - should be (7,) or (4,4).')
 
         if to_blender_format:
             T_cam_sfm = self.reverse_camera_matrix_for_blender(T_cam_sfm)
@@ -145,10 +161,13 @@ class ModelConversion:
         T_cad_cam = self.T_cad_sfm @ T_sfm_cam
         scale, shear, angles, translate, perspective = decompose_matrix(T_cad_cam)
         T_cad_cam = compose_matrix(None, None, angles, translate)
-        pose_cad_cam = convert_matrix_to_pose(T_cad_cam)
 
-        # pose_cad_cam[:3] = pose_cad_cam[:3] / scale
+        if pose_cam_sfm.shape == (7,):
+            pose_cad_cam = convert_matrix_to_pose(T_cad_cam)
+        elif pose_cam_sfm.shape == (4,4):
+            pose_cad_cam = T_cad_cam
 
+        assert pose_cam_sfm.shape == pose_cad_cam.shape, (pose_cam_sfm.shape, pose_cad_cam.shape)
         return pose_cad_cam
     
     def transform_poses_from_colmap_to_cad_format(
@@ -180,7 +199,12 @@ class ModelConversion:
         """
         
         # CAM in CAD frame
-        T_cad_cam = convert_pose_to_matrix(pose_cad_cam)
+        if pose_cad_cam.shape == (7,):
+            T_cad_cam = convert_pose_to_matrix(pose_cad_cam)
+        elif pose_cad_cam.shape == (4,4):
+            T_cad_cam = pose_cad_cam
+        else:
+            raise ValueError(f'Pose shape {pose_cad_cam.shape} not valid - should be (7,) or (4,4).')
 
         # CAM in SFM frame
         T_sfm_cam = self.T_sfm_cad @ T_cad_cam
@@ -197,6 +221,10 @@ class ModelConversion:
         
         pose_cam_sfm[:3] = pose_cam_sfm[:3] / scale
 
+        if pose_cad_cam.shape == (4,4):
+            pose_cam_sfm = T_cam_sfm
+
+        assert pose_cad_cam.shape == pose_cam_sfm.shape, (pose_cad_cam.shape, pose_cam_sfm.shape)
         return pose_cam_sfm
     
     def transform_poses_from_cad_to_colmap_format(
@@ -227,26 +255,6 @@ class ModelConversion:
         Convert render intrinsics and poses to COLMAP format.
         Assumption: fx=fy (only used along largest dimension).
         """
-
-        # OLD: global intrinsics
-
-        # with open(self.path_to_database / 'intrinsics.txt', 'r') as file:
-        #     lines = file.readlines()
-        #     w, h, f_mm = [float(x) for x in lines[0].split()]
-        #     w, h = int(w), int(h)
-        #     fx = fy = f_mm * w / 36
-        #     cx, cy = w/2, h/2
-
-        # camera = Camera(
-        #     id=1,
-        #     model='PINHOLE',
-        #     width=w,
-        #     height=h,
-        #     params=np.array([fx, fy, cx, cy]),
-        # )
-
-
-        # NEW: individual intrinsics
 
         cameras = {}
         images = {}
@@ -488,7 +496,36 @@ class ModelConversion:
 
 if __name__ == '__main__':
 
-    pass
+    T_notre_dame = np.array([
+        [-0.04308, -0.07366, -0.0008805, -1.525],
+        [0.0245, -0.01336, -0.08065, 4.145],
+        [0.06947, -0.04097, 0.02789, 10.74],
+        [0, 0, 0, 1]
+    ])
+
+    T_reichstag = np.array([
+        [-0.0004522, -0.06534, 0.0007033, 0.4911],
+        [0.00916, -0.0007597, -0.06469, 1.748],
+        [0.06469, -0.0003491, 0.009164, 12.37],
+        [0, 0, 0, 1]
+    ])
+
+    T_st_peters = np.array([
+        [-0.008938, 0.04505, -4.739e-05, 7.153],
+        [-0.01353, -0.002731, -0.04381, 1.885],
+        [-0.04297, -0.008511, 0.01381, 5.6],
+        [0, 0, 0, 1]
+    ])
+
+    for T, name in zip([T_notre_dame, T_reichstag, T_st_peters], ['Notre Dame', 'Reichstag', 'St Peters Square']):
+        scale, shear, angles, translate, perspective = decompose_matrix(T)
+        q = Quaternion(matrix=Rotation.from_euler('xyz', angles).as_matrix()).inverse
+        pose = np.hstack([translate, q.q])
+        scale = np.average(scale)
+        print(name)
+        print('Scale:', 1/scale)
+
+    
 
     # path_to_database = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/inputs/database/')
 
