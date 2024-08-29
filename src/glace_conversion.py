@@ -212,7 +212,58 @@ class GlaceConversion:
         pass
 
 
+class ScaleConversion:
+
+    def __init__(
+            self,
+            scale: float,
+            path_to_input: Path,
+            path_to_output: Path,
+            type: str = 'matrix',
+        ):
+        self.scale = scale
+        self.path_to_input = path_to_input
+        self.path_to_output = path_to_output
+        
+        if not self.path_to_input.exists():
+            raise FileNotFoundError(f"{self.path_to_input} does not exist")
+        if not self.path_to_output.exists(): self.path_to_output.mkdir()
+
+        if type != 'matrix':
+            raise NotImplementedError(f"Type {type} not implemented")
+
+        self.scale_poses()
+
+    def scale_poses(self):
+        """
+        Scale pose matrices by self.scale and save to path
+        """
+
+        for file in self.path_to_input.glob('*.txt'):
+            pose = np.loadtxt(file)
+            assert pose.shape == (4, 4), f"Pose matrix shape {pose.shape} is not 4x4"
+            pose[:3, 3] *= self.scale
+
+            output_file = self.path_to_output / file.name
+            np.savetxt(output_file, pose, fmt='%15.7e')
+
+
 if __name__ == '__main__':
+
+    scale_notre_dame = 11.718009811983837
+    scale_reichstag  = 15.304415226012821
+    scale_st_peters  = 21.77207755406891
+    
+
+    ScaleConversion(
+        scale=11.718,
+        path_to_input=Path('/Users/eric/Developer/glace/datasets/notre_dame_B/train/poses/'),
+        path_to_output=Path('/Users/eric/Developer/glace/datasets/notre_dame_B/train/scaled_poses/'),
+    )
+
+
+
+
     # GlaceConversion(
     #     path_to_input=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B_new/inputs/'),
     #     path_to_output=Path('/Users/eric/Developer/glace/datasets/notre dame B/'),
@@ -245,10 +296,10 @@ if __name__ == '__main__':
 
 
     # Notre Dame B with rendered SFM poses
-    GlaceConversion(
-        path_to_input=Path('/home/johndoe/Documents/data/Evaluation/notre dame B/ground truth/'),
-        path_to_output=Path('/home/johndoe/Documents/data/GLACE/notre dame B rendered/'),
-        database_prefix='renders/',
-        database=True,
-        query=False,
-    )
+    # GlaceConversion(
+    #     path_to_input=Path('/home/johndoe/Documents/data/Evaluation/notre dame B/ground truth/'),
+    #     path_to_output=Path('/home/johndoe/Documents/data/GLACE/notre dame B rendered/'),
+    #     database_prefix='renders/',
+    #     database=True,
+    #     query=False,
+    # )
