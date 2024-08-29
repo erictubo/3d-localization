@@ -1,6 +1,10 @@
 
-evaluation_dir = '/home/johndoe/Documents/data/Evaluation/'
+# Ubuntu
+# data_dir = '/home/johndoe/Documents/data/'
 
-models_dir = '/home/johndoe/Documents/data/3D Models'
-renders_dir = '/home/johndoe/Documents/data/Renders'
+# macOS
+data_dir = '/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/'
 
+evaluation_dir = data_dir + 'Evaluation/'
+models_dir = data_dir + '3D Models/'
+renders_dir = data_dir + 'Renders/'
