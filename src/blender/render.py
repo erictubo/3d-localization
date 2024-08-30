@@ -582,7 +582,7 @@ class Blender:
 
         self.write_bounding_box_to_file()
 
-    def render_ground_view(self, id: str, ground_distance: int, h_angle_deg: int, height_above_ground: int, f: float = 35, f_unit: str = 'MM', v_angle_deg: int = 0):
+    def render_ground_view(self, id: str, ground_distance: int, h_angle_deg: int, height_above_ground: int, f: float = 35, f_unit: str = 'MM', v_offset_deg: int = 0, h_offset_deg: int = 0):
         """
         Render ground view at a specific distance, horizontal angle (deg) and height.
         """
@@ -600,10 +600,16 @@ class Blender:
 
         self.set_camera_orbit_pose(distance, h_angle, v_angle)
 
-        if v_angle_deg != 0:
-            # rotate camera upwards by v_angle_deg
+        if v_offset_deg != 0:
+            # rotate camera upwards by v_offset_deg
             axis = Vector((0, 0, 1)).cross(self.camera.location - self.target_center)
-            q = Quaternion(axis, v_angle_deg * pi/180)
+            q = Quaternion(axis, v_offset_deg * pi/180)
+            self.adjust_camera_pose([0, 0, 0, q.w, q.x, q.y, q.z])
+
+        if h_offset_deg != 0:
+            # rotate camera sideways by h_offset_deg
+            axis = Vector((0, 0, 1))
+            q = Quaternion(axis, h_offset_deg * pi/180)
             self.adjust_camera_pose([0, 0, 0, q.w, q.x, q.y, q.z])
 
         self.set_camera_intrinsics(self.default_image_size[0], self.default_image_size[1], f, f_unit)
@@ -612,7 +618,11 @@ class Blender:
         
         self.render(id)
 
-    def render_ground_views(self, distances: 'list[int]', h_steps: int, heights: 'list[int]', focal_lengths: 'list[float]' = [35], f_unit: str = 'MM', v_angles_deg: 'list[int]' = [0]):
+    def render_ground_views(
+            self, distances: 'list[int]', h_steps: int, heights: 'list[int]',
+            focal_lengths: 'list[float]' = [35], f_unit: str = 'MM',
+            v_offsets_deg: 'list[int]' = [0], h_offsets_deg: 'list[int]' = [0],
+        ):
         """
         Render ground views at multiple distances, horizontal angles (deg) and heights.
         """
@@ -623,56 +633,47 @@ class Blender:
         
         h_angles_deg = [deg for deg in np.linspace(0, 360, h_steps, endpoint=False)]
 
-        total = len(distances) * len(h_angles_deg) * len(heights)
+        total = len(distances) * len(h_angles_deg) * len(heights) * len(focal_lengths) * len(v_offsets_deg) * len(h_offsets_deg)
 
         print(f"Rendering {total} images ...")
 
         i:int = 0
         for f in focal_lengths:
+
             for distance in distances:
                 for h_angle_deg in h_angles_deg:
                     for height in heights:
-                        for v_angle_deg in v_angles_deg:
 
-                            i += 1
-                            id = f'{i:04d}'
-                            id = f'f{int(f)}_d{int(distance)}_z{int(height)}_h{int(h_angle_deg)}'
+                        for v_offset_deg in v_offsets_deg:
+                            for h_offset_deg in h_offsets_deg:
 
-                            if v_angle_deg != 0:
-                                # add vertical angle to id, '+' for positive angles and '-' for negative angles
-                                if v_angle_deg < 0:
-                                    id += f'_v{v_angle_deg}'
+                                i += 1
+                                id = f'{i:04d}'
+                                id = f'f{int(f)}_d{int(distance)}_z{int(height)}_h{int(h_angle_deg)}'
+
+                                # if v_offset_deg != 0:
+                                if v_offset_deg <= 0:
+                                    id += f'_dv{v_offset_deg}'
                                 else:
-                                    id += f'_v+{v_angle_deg}'
+                                    id += f'_dv+{v_offset_deg}'
+                                    
+                                # if h_offset_deg != 0:
+                                if h_offset_deg <= 0:
+                                    id += f'_dh{h_offset_deg}'
+                                else:
+                                    id += f'_dh+{h_offset_deg}'
 
+                                # skip if already exists
+                                if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
+                                    print(f"Render {id} already exists, skipping")
+                                    continue
 
-                            # skip if already exists
-                            if os.path.exists(os.path.join(self.images_dir, f'{id}.png')):
-                                print(f"Render {id} already exists, skipping")
-                                continue
+                                self.render_ground_view(id, distance, h_angle_deg, height, f, f_unit, v_offset_deg, h_offset_deg)
 
-                            self.render_ground_view(id, distance, h_angle_deg, height, f, f_unit, v_angle_deg)
-
-                            print(f"Render {i} / {total} ...")
+                                print(f"Render {i} / {total} ...")
 
         self.write_bounding_box_to_file()
 
 
 if __name__ == "__main__":
-    blender_dir = '/Users/eric/Library/Mobile Documents/com~apple~CloudDocs/Blender/'
-    blend_file = f'{blender_dir}assets/models/notre dame E/notre dame E.blend'
-    target_name = 'notre-dame-de-paris-complete-miniworld3d'
-
-    render_dir = f'{blender_dir}renders/notre_dame_E_lighting/'
-
-    blender = Blender(
-        blend_file,
-        render_dir,
-        target_name,
-        )
-
-    blender.render_ground_views(
-        distances=[110],
-        h_steps = 8,
-        heights = [10]
-        )
+    pass
