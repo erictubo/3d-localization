@@ -516,7 +516,7 @@ class ModelConversion:
             name = image_name.split('.')[0]
             if os.path.exists(self.path_to_scene_coordinates / (name + '.npz')):
                 print(f"Scene coordinate map {name} already exists, skipping")
-                return
+                continue
 
             if format.lower() == 'sfm':
                 image_id = [k for k, v in images.items() if v.name == image_name][0]
