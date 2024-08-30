@@ -39,24 +39,38 @@ def convert_matrix_to_pose(T: np.ndarray) -> np.ndarray:
 
     return pose
 
-def reverse_camera_matrix_for_blender(T: np.ndarray, frame: str = 'cam') -> np.ndarray:
-        """
-        Rotate camera matrix 180 degrees about the x-axis to match Blender camera (facing -z direction).
-        Frame: default CAM because can simply rotate around camera's own axis
-        """
-        assert T.shape == (4,4), T.shape
 
-        if frame.lower == 'cam':
-            # rotate about camera's x-axis by 180 degrees
-            T_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T
+def reverse_camera_pose_for_blender(pose: np.ndarray, pose_frame: str) -> np.ndarray:
+    """
+    Rotate camera matrix 180 degrees about the x-axis to match Blender camera (facing -z direction).
+    Params:
+    - pose: [px, py, pz, qx, qy, qz] OR 4x4 homogeneous transformation matrix
+    - pose_frame: CAM (faster) or in another frame (will do an inversion for the correct axis)
+    """
+    if pose.shape == (7,):
+        T = convert_pose_to_matrix(pose)
+    elif pose.shape == (4,4):
+        T = pose
+    else:
+        raise ValueError(f'Pose shape {pose.shape} not valid - should be (7,) or (4,4).')
+    
+    if pose_frame.lower()[:3] == 'cam':
+        # rotate about camera's x-axis by 180 degrees
+        T_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T
 
-        else:
-            # first invert the matrix, then rotate about x-axis by 180 degrees, then invert again
-            T_inv = np.linalg.inv(T)
-            T_inv_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T_inv
-            T_rev = np.linalg.inv(T_inv_rev)
-        
-        return T_rev
+    else:
+        # first invert the matrix, then rotate about x-axis by 180 degrees, then invert again
+        T_inv = np.linalg.inv(T)
+        T_inv_rev = compose_matrix(None, None, [np.pi, 0, 0], [0, 0, 0]) @ T_inv
+        T_rev = np.linalg.inv(T_inv_rev)
+
+    if pose.shape == (7,):
+        pose_rev = convert_matrix_to_pose(T_rev)
+    elif pose.shape == (4,4):
+        pose_rev = T_rev
+
+    assert pose.shape == pose_rev.shape, (pose.shape, pose_rev.shape)
+    return pose_rev
 
 
 class ModelConversion:
@@ -121,28 +135,6 @@ class ModelConversion:
     """
     FRAME CONVERSION:
     """
-    
-    @staticmethod
-    def reverse_camera_pose_for_blender(pose: np.ndarray) -> np.ndarray:
-        """
-        Rotate camera pose 180 degrees about the x-axis to match Blender camera (facing -z direction).
-        """
-        if pose.shape == (7,):
-            T = convert_pose_to_matrix(pose)
-        elif pose.shape == (4,4):
-            T = pose
-        else:
-            raise ValueError(f'Pose shape {pose.shape} not valid - should be (7,) or (4,4).')
-        
-        T_rev = reverse_camera_matrix_for_blender(T)
-
-        if pose.shape == (7,):
-            pose_rev = convert_matrix_to_pose(T_rev)
-        elif pose.shape == (4,4):
-            pose_rev = T_rev
-
-        assert pose.shape == pose_rev.shape, (pose.shape, pose_rev.shape)
-        return pose_rev
 
     def transform_pose_from_colmap_to_cad_format(
             self,
@@ -163,7 +155,7 @@ class ModelConversion:
             raise ValueError(f'Pose shape {pose_cam_sfm.shape} not valid - should be (7,) or (4,4).')
 
         if to_blender_format:
-            T_cam_sfm = reverse_camera_matrix_for_blender(T_cam_sfm)
+            T_cam_sfm = reverse_camera_pose_for_blender(T_cam_sfm, pose_frame='camera')
 
         # CAM in SFM frame
         T_sfm_cam = np.linalg.inv(T_cam_sfm)
@@ -217,6 +209,9 @@ class ModelConversion:
         else:
             raise ValueError(f'Pose shape {pose_cad_cam.shape} not valid - should be (7,) or (4,4).')
 
+        if from_blender_format:
+            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam, 'cad')
+
         # CAM in SFM frame
         T_sfm_cam = self.T_sfm_cad @ T_cad_cam
 
@@ -224,9 +219,6 @@ class ModelConversion:
         T_cam_sfm = np.linalg.inv(T_sfm_cam)
         scale, shear, angles, translate, perspective = decompose_matrix(T_cam_sfm)
         T_cam_sfm = compose_matrix(None, None, angles, translate)
-
-        if from_blender_format:
-            T_cam_sfm = reverse_camera_matrix_for_blender(T_cam_sfm)
 
         pose_cam_sfm = convert_matrix_to_pose(T_cam_sfm)
         
@@ -382,7 +374,11 @@ class ModelConversion:
     """
 
     @staticmethod
-    def convert_depth_map_from_exr_to_npz(path_to_depth: Path, name: str, scale: float = None):
+    def convert_depth_map_from_exr_to_npz(
+            path_to_depth: Path,
+            name: str,
+            scale: float = None,
+        ):
         """
         Convert EXR depth maps to NPZ format.
         """
@@ -414,12 +410,17 @@ class ModelConversion:
         depth_values_dict['depth'] = depth        
         np.savez_compressed(path_to_depth / (name + '.npz'), **depth_values_dict)
 
-    def convert_depth_maps_from_exr_to_npz(self):
+    def convert_depth_maps_from_exr_to_npz(self, format: str):
         """
         Convert all EXR depth maps to NPZ format.
         """
+        if format.lower() == 'cad':
+            scale = None
+        if format.lower() == 'sfm':
+            scale = self.s_cad_sfm
+            
         for image_name in self.image_names:
-            self.convert_depth_map_from_exr_to_npz(self.path_to_depth, image_name, scale=self.s_cad_sfm)
+            self.convert_depth_map_from_exr_to_npz(self.path_to_depth, image_name, scale)
 
     """
     SCENE COORDINATES:
@@ -429,13 +430,32 @@ class ModelConversion:
     def transform_depth_to_scene_coordinate_map(
             depth_map: np.ndarray,
             camera_intrinsics: np.ndarray,
-            pose_cam_sfm: np.ndarray,
+            pose: np.ndarray,
+            pose_format: str,
+            format: str,
         ) -> np.ndarray:
         """
         Convert depth map to scene coordinates.
         """
-        T_cam_sfm = convert_pose_to_matrix(pose_cam_sfm)
-        T_sfm_cam = np.linalg.inv(T_cam_sfm)
+
+        assert pose.shape == (7,), pose.shape
+
+        if pose_format.lower() == 'cam_sfm':
+            pose_cam_sfm = pose
+            T_cam_sfm = convert_pose_to_matrix(pose_cam_sfm)
+            T_sfm_cam = np.linalg.inv(T_cam_sfm)
+        
+        elif pose_format.lower() == 'cad_cam':
+            pose_cad_cam = pose
+            T_cad_cam = convert_pose_to_matrix(pose_cad_cam)
+        
+        elif pose_format.lower() == 'cad_cam blender':
+            pose_cad_cam_blender = pose
+            T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
+            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender, format='cad')
+
+        else:
+            raise ValueError(f'Pose format {pose_format} not implemented.')
 
         fx, fy, cx, cy = camera_intrinsics
 
@@ -450,18 +470,26 @@ class ModelConversion:
         points_cam = np.stack([x, y, z, ones], axis=-1)
         points_cam = points_cam.reshape(-1, 4)
 
-        points_sfm = points_cam @ T_sfm_cam.T
+        if format.lower() == 'sfm':
+            points_sfm = points_cam @ T_sfm_cam.T
+            points_sfm = points_sfm[:, :3]
+            points_sfm = points_sfm.reshape(depth_map.shape[0], depth_map.shape[1], 3)
+            assert points_sfm.shape == depth_map.shape + (3,), points_sfm.shape
 
-        points_sfm = points_sfm[:, :3]
+            return points_sfm
+        
+        elif format.lower() == 'cad':
+            points_cad = points_cam @ T_cad_cam.T
+            points_cad = points_cad[:, :3]
+            points_cad = points_cad.reshape(depth_map.shape[0], depth_map.shape[1], 3)
+            assert points_cad.shape == depth_map.shape + (3,), points_cad.shape
 
-        points_sfm = points_sfm.reshape(depth_map.shape[0], depth_map.shape[1], 3)
-
-        assert points_sfm.shape == depth_map.shape + (3,), points_sfm.shape
-
-        return points_sfm
+            return points_cad
 
 
-    def convert_depth_to_scene_coordinate_maps(self):
+
+
+    def convert_depth_to_scene_coordinate_maps(self, format: str):
         """
         Convert all depth maps to scene coordinates and save as NPZ files.
         """
@@ -469,10 +497,19 @@ class ModelConversion:
         if not self.path_to_scene_coordinates.exists():
             self.path_to_scene_coordinates.mkdir()
 
-        # OPTION A: read poses & intrinsics from COLMAP files (images.txt, cameras.txt)
 
-        images = read_images_text(self.path_to_database / 'images.txt')
-        cameras = read_cameras_text(self.path_to_database / 'cameras.txt')
+        # OPTION A: read poses & intrinsics from COLMAP files (images.txt, cameras.txt)
+        if format.lower() == 'sfm':
+            pose_format = 'cam_sfm'
+            images = read_images_text(self.path_to_database / 'images.txt')
+            cameras = read_cameras_text(self.path_to_database / 'cameras.txt')
+
+        # OPTION B: read poses & intrinsics from Blender files (poses, intrinsics)
+        elif format.lower() == 'cad':
+            pose_format = 'cad_cam'
+        
+        else:
+            raise ValueError(f'Format {format} not implemented.')
 
 
         for image_name in self.image_names:
@@ -481,28 +518,41 @@ class ModelConversion:
                 print(f"Scene coordinate map {name} already exists, skipping")
                 return
 
-            image_id = [k for k, v in images.items() if v.name == image_name][0]
+            if format.lower() == 'sfm':
+                image_id = [k for k, v in images.items() if v.name == image_name][0]
+                image = images[image_id]
+                camera = cameras[image.camera_id]
 
-            image = images[image_id]
-            camera = cameras[image.camera_id]
+                assert camera.model == 'PINHOLE', print(f'Camera model {camera.model} not implemented.')
+                camera_intrinsics = camera.params # format: [fx, fy, cx, cy]
+                pose = np.append(image.tvec, image.qvec)
 
-            assert camera.model == 'PINHOLE', print(f'Camera model {camera.model} not implemented.')
-            camera_intrinsics = camera.params # format: [fx, fy, cx, cy]
-            pose_cam_sfm = np.append(image.tvec, image.qvec)
+            elif format.lower() == 'cad':
+                # TODO: read camera_intrinsics from file
+                intrinsics_file = self.path_to_intrinsics / (name + '.txt')
+                w, h, f, f_unit, cx, cy = intrinsics_file.read_text().strip().split()
+                w, h, f, cx, cy = int(w), int(h), float(f), float(cx), float(cy)
+                
+                if f_unit == 'MM':
+                    # convert focal length from mm to pixels
+                    fx = fy = f * max(w, h) / 36
+                else:
+                    raise NotImplementedError(f"Unit {f_unit} not implemented")
+                
+                camera_intrinsics = [fx, fy, cx, cy]
+
+                pose_file = self.path_to_poses / (name + '.txt')
+                pose_blender = np.loadtxt(pose_file)
+                pose = reverse_camera_pose_for_blender(pose_blender, 'cad')
 
             depth_name = name + '.npz'
             depth_map = np.load(self.path_to_depth / depth_name)['depth']
 
-            scene_coordinates = self.transform_depth_to_scene_coordinate_map(depth_map, camera_intrinsics, pose_cam_sfm)
+            scene_coordinates = self.transform_depth_to_scene_coordinate_map(depth_map, camera_intrinsics, pose, pose_format, format)
 
             scene_coordinates_dict = {}
             scene_coordinates_dict['scene_coordinates'] = scene_coordinates
             np.savez_compressed(self.path_to_scene_coordinates / (name + '.npz'), **scene_coordinates_dict)
-
-        # OPTION B: read poses & intrinsics from Blender files (poses, intrinsics)
-        # PROBLEM: CAD format, requires conversion first, but done before
-
-        # IDEA: add option to switch between SFM and CAD formats
 
 
 if __name__ == '__main__':

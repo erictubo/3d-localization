@@ -21,11 +21,18 @@ if __name__ == "__main__":
     model_names = ['Notre Dame']
     cad_model_ids = ['B']
 
+    # model_names = ['St Peters Square']
+    # cad_model_ids = ['B']
+
     # Limit for GT rendering
     limit = 4000
 
     # Number of matches for image retrieval (MeshLoc)
     num_matched = 25
+
+    # Format to convert depth maps and scene coodinates to:
+    format_depth = 'CAD' # 'SFM'
+    # TODO: option 1: only depth maps in SFM format (MeshLoc) / option 2: both in CAD format (GLACE)
 
 
     for model_name in model_names:
@@ -62,11 +69,13 @@ if __name__ == "__main__":
             print('   Converting intrinsics and poses to COLMAP format ...')
             cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
 
-            print('   Converting depth maps to NPZ ...')
-            cad_to_colmap.convert_depth_maps_from_exr_to_npz()
+            if input("Convert depth maps & scene coordinates?") == 'y':
 
-            print('   Creating scene coordinate maps ...')
-            cad_to_colmap.convert_depth_to_scene_coordinate_maps()
+                print('   Converting depth maps to NPZ ...')
+                cad_to_colmap.convert_depth_maps_from_exr_to_npz(format=format_depth)
+
+                print('   Creating scene coordinate maps ...')
+                cad_to_colmap.convert_depth_to_scene_coordinate_maps(format=format_depth)
 
 
             # 1.4. Convert ground truth query poses from COLMAP to CAD format for rendering
