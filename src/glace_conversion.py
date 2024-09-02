@@ -48,12 +48,17 @@ class GlaceConversion:
             assert T_sfm_cad.shape == (4,4), "Reference transformation is not a 4x4 matrix"
             self.T_sfm_cad = T_sfm_cad
             self.T_cad_sfm = np.linalg.inv(self.T_sfm_cad)
-            
-            self.colmap_model = ColmapModelReader(self.path_to_colmap_model)
 
             if not sfm_names:
                 sfm_names = [image.name for image in self.path_to_colmap_model.parent.glob('images/*')]
             sfm_names = [name.split('.')[0] for name in sfm_names]
+            sfm_names.sort()
+
+            n = self.num_test
+            if n != 0: print('SFM names (test split):', sfm_names[:3])
+            print('SFM names (train split):', sfm_names[n:n+3])
+
+            self.colmap_model = ColmapModelReader(self.path_to_colmap_model)
 
             self.copy_sfm_images(sfm_names)
             self.convert_sfm_intrinsics(sfm_names)
