@@ -39,6 +39,7 @@ class GlaceConversion:
             self.copy_rendered_images()
             self.convert_rendered_intrinsics()
             self.convert_rendered_poses()
+            self.convert_rendered_depth_maps()
         
         elif source.lower() == 'sfm':
             assert path_to_colmap_model, "Missing input: path_to_colmap_model"
@@ -70,6 +71,48 @@ class GlaceConversion:
         # TODO: implement scene coordinates
         # Make sure they are in the correct frame as well (CAD)
         # self.copy_scene_coordinates()
+
+        # INFO: for SFM reconstruction -> scene coordinates
+        # see GLACE setup_cambridge.py
+
+    def convert_rendered_depth_maps(self):
+        """
+        Convert depth maps from path_to_renders/depth_maps/*.npz to train/depth_maps/*.npy.
+        """
+
+        database_depth = list(self.path_to_renders.glob('depth/*.npz'))
+        self.num_database_depth = len(database_depth)
+
+        assert self.num_database_depth == self.num_database_images, \
+            f"Number of intrinsics files ({self.num_database_depth}) does not match number of images ({self.num_database_images})"
+        
+        for split in ['train', 'test']:
+            path = self.path_to_glace / split / 'depth'
+            if not path.exists(): path.mkdir()
+        
+        for i, file in enumerate(database_depth):
+            if i < self.num_test: split = 'test'
+            else: split = 'train'
+
+            depth_map = np.load(file)['depth']
+            output_file = self.path_to_glace / split / 'depth' / file.name.replace('.npz', '.npy')
+            np.save(output_file, depth_map)
+
+
+    # def convert_scene_coordinates(self):
+    #     """
+    #     Convert scene coordinates from 
+    #     """
+
+    #     # INPUT: path_to_renders/scene_coordinates/*.npz
+    #     # npz: dict['scene_coordinates'] = scene_coordinates ndarray (w x h x 3)
+    #     # w, h = image width, height
+
+    #     # OUTPUT: train/init/* torch tensors (3 x H x W)
+    #     # H, W = SCR output dimension = 640 x 480 (480 fixed, width based on aspect ratio)
+    #     # invalid set to zero
+
+    #     pass
 
 
     def copy_rendered_images(self):
@@ -159,7 +202,7 @@ class GlaceConversion:
             pose_cad_cam_blender = np.loadtxt(file)
             T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
 
-            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender, frame='CAD')
+            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender,'CAD')
 
             output_file = self.path_to_glace / split / 'poses' / file.name
             np.savetxt(output_file, T_cad_cam, fmt='%15.7e')
@@ -269,8 +312,16 @@ if __name__ == '__main__':
         [0, 0, 0, 1]
     ])
 
-    path_to_data = Path('/home/johndoe/Documents/data/GLACE/')
+    # path_to_data = Path('/home/johndoe/Documents/data/')
+    path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
 
+
+
+    GlaceConversion(
+        source='renders',
+        path_to_glace=path_to_data / 'GLACE/notre dame B/',
+        path_to_renders=path_to_data / 'Evaluation/notre dame B/inputs/database/',
+    )
 
 
     # St Peters Square B
@@ -283,10 +334,10 @@ if __name__ == '__main__':
     # )
 
     # - SFM
-    GlaceConversion(
-        source='SFM',
-        path_to_colmap_model=Path('/home/johndoe/Documents/data/3D Models/St Peters Square/Reference/dense/sparse/'),
-        path_to_glace=Path('/home/johndoe/Documents/data/GLACE/st peters square B (SFM renders)/'),
-        T_sfm_cad=T_st_peters,
-        num_test=100,
-    )
+    # GlaceConversion(
+    #     source='SFM',
+    #     path_to_colmap_model=Path('/home/johndoe/Documents/data/3D Models/St Peters Square/Reference/dense/sparse/'),
+    #     path_to_glace=Path('/home/johndoe/Documents/data/GLACE/st peters square B (SFM renders)/'),
+    #     T_sfm_cad=T_st_peters,
+    #     num_test=100,
+    # )
