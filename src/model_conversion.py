@@ -374,20 +374,16 @@ class ModelConversion:
     """
 
     @staticmethod
-    def convert_depth_map_from_exr_to_npz(
+    def convert_depth_map_from_exr_to_numpy(
             path_to_depth: Path,
             name: str,
             scale: float = None,
-        ):
+        ) -> np.ndarray:
         """
         Convert EXR depth maps to NPZ format.
-        """
-        name = name.split('.')[0]
-        if os.path.exists(path_to_depth / (name + '.npz')):
-            print(f"NPZ depth map {name} already exists, skipping")
-            return
+        """        
         
-        depth_name = name + '.exr'
+        depth_name = name.split('.')[0] + '.exr'
         file = OpenEXR.InputFile(str(path_to_depth / depth_name))
 
         # Get the header and data window
@@ -405,10 +401,9 @@ class ModelConversion:
         # scale depth values
         if scale:
             depth = depth / scale
-
-        depth_values_dict = {}
-        depth_values_dict['depth'] = depth        
-        np.savez_compressed(path_to_depth / (name + '.npz'), **depth_values_dict)
+        
+        return depth
+        
 
     def convert_depth_maps_from_exr_to_npz(self, format: str):
         """
@@ -420,7 +415,14 @@ class ModelConversion:
             scale = self.s_cad_sfm
             
         for image_name in self.image_names:
-            self.convert_depth_map_from_exr_to_npz(self.path_to_depth, image_name, scale)
+            name = image_name.split('.')[0]
+            if os.path.exists(self.path_to_depth / (name + '.npz')):
+                print(f"NPZ depth map {name} already exists, skipping")
+                continue
+            depth_values_dict = {}
+            depth_values_dict['depth'] = self.convert_depth_map_from_exr_to_numpy(self.path_to_depth, name, scale)
+            name = image_name.split('.')[0]
+            np.savez_compressed(self.path_to_depth / (name + '.npz'), **depth_values_dict)
 
     """
     SCENE COORDINATES:

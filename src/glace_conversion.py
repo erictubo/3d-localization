@@ -36,10 +36,14 @@ class GlaceConversion:
             assert path_to_renders, "Missing input: path_to_renders"
             self.path_to_renders = path_to_renders
 
-            self.copy_rendered_images()
-            self.convert_rendered_intrinsics()
-            self.convert_rendered_poses()
-            self.convert_rendered_depth_maps()
+            names = [image.name for image in self.path_to_renders.glob('images/*')]
+            names = [name.split('.')[0] for name in names]
+            names.sort()
+
+            self.copy_rendered_images(names)
+            self.convert_rendered_intrinsics(names)
+            self.convert_rendered_poses(names)
+            self.convert_rendered_depth_maps(names)
         
         elif source.lower() == 'sfm':
             assert path_to_colmap_model, "Missing input: path_to_colmap_model"
@@ -75,29 +79,23 @@ class GlaceConversion:
         # INFO: for SFM reconstruction -> scene coordinates
         # see GLACE setup_cambridge.py
 
-    def convert_rendered_depth_maps(self):
+    def convert_rendered_depth_maps(self, names: List[str]):
         """
         Convert depth maps from path_to_renders/depth_maps/*.npz to train/depth_maps/*.npy.
         Change m to mm.
         """
 
-        database_depth = list(self.path_to_renders.glob('depth/*.npz'))
-        self.num_database_depth = len(database_depth)
-
-        assert self.num_database_depth == self.num_database_images, \
-            f"Number of intrinsics files ({self.num_database_depth}) does not match number of images ({self.num_database_images})"
-        
         for split in ['train', 'test']:
             path = self.path_to_glace / split / 'depth'
             if not path.exists(): path.mkdir()
         
-        for i, file in enumerate(database_depth):
+        for i, name in enumerate(names):
             if i < self.num_test: split = 'test'
             else: split = 'train'
 
-            depth_map = np.load(file)['depth']
+            depth_map = ModelConversion.convert_depth_map_from_exr_to_numpy(self.path_to_renders / 'depth/', name)
             depth_map_mm = depth_map * 1000
-            output_file = self.path_to_glace / split / 'depth' / file.name.replace('.npz', '.npy')
+            output_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
             np.save(output_file, depth_map_mm)
 
 
@@ -117,47 +115,40 @@ class GlaceConversion:
     #     pass
 
 
-    def copy_rendered_images(self):
+    def copy_rendered_images(self, names: List[str]):
         """
         Copy images from path_to_renders/images/* to train/rgb/*
         """
-
-        database_images = list(self.path_to_renders.glob('images/*'))
-        self.num_database_images = len(database_images)
-        print(f"Number of database images: {self.num_database_images}")
 
         for split in ['train', 'test']:
             path = self.path_to_glace / split / 'rgb'
             if not path.exists(): path.mkdir()
 
-        for i, input_image in enumerate(database_images):
+        for i, name in enumerate(names):
             if i < self.num_test: split = 'test'
             else: split = 'train'
 
-            output_image = self.path_to_glace / split / 'rgb' / input_image.name
+            input_image = self.path_to_renders / 'images' / f'{name}.png'
+            output_image = self.path_to_glace / split / 'rgb' / f'{name}.png'
             output_image.write_bytes(input_image.read_bytes())
         
         print("Database images copied successfully")
 
 
-    def convert_rendered_intrinsics(self):
+    def convert_rendered_intrinsics(self, names: List[str]):
         """
         Convert path_to_renders/intrinsics/*.txt (w, h, f, f_unit, cx, cy) to train/calibration/*.txt (camera matrix) per image.
         """
         
-        database_intrinsics = list(self.path_to_renders.glob('intrinsics/*.txt'))
-        self.num_database_intrinsics = len(database_intrinsics)
-
-        assert self.num_database_intrinsics == self.num_database_images, \
-            f"Number of intrinsics files ({self.num_database_intrinsics}) does not match number of images ({self.num_database_images})"
-
         for split in ['train', 'test']:
             path = self.path_to_glace / split / 'calibration'
             if not path.exists(): path.mkdir()
 
-        for i, file in enumerate(database_intrinsics):
+        for i, name in enumerate(names):
             if i < self.num_test: split = 'test'
             else: split = 'train'
+
+            file = self.path_to_renders / 'intrinsics' / f'{name}.txt'
 
             w, h, f, f_unit, cx, cy = file.read_text().strip().split()
             w, h, f, cx, cy = int(w), int(h), float(f), float(cx), float(cy)
@@ -175,31 +166,27 @@ class GlaceConversion:
                 [0, 0, 1]
             ])
 
-            output_file = self.path_to_glace / split / 'calibration' / file.name
+            output_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
             np.savetxt(output_file, K, fmt='%15.7e')
         
         print("Database intrinsics converted successfully")
 
 
-    def convert_rendered_poses(self):
+    def convert_rendered_poses(self, names: List[str]):
         """
         Convert path_to_renders/poses/*.txt (px, py, pz, qw, qx, qy, qz) to poses/*.txt (transformation matrix) per image
         Format: CAD (inverted Blender camera) -> CAD (conventional camera)
         """
 
-        database_poses = list(self.path_to_renders.glob('poses/*.txt'))
-        self.num_database_poses = len(database_poses)
-
-        assert self.num_database_poses == self.num_database_images, \
-            f"Number of poses files ({self.num_database_poses}) does not match number of images ({self.num_database_images})"
-
         for split in ['train', 'test']:
             path = self.path_to_glace / split / 'poses'
             if not path.exists(): path.mkdir()
 
-        for i, file in enumerate(database_poses):
+        for i, name in enumerate(names):
             if i < self.num_test: split = 'test'
             else: split = 'train'
+
+            file = self.path_to_renders / 'poses' / f'{name}.txt'
 
             pose_cad_cam_blender = np.loadtxt(file)
             T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
@@ -319,10 +306,17 @@ if __name__ == '__main__':
 
 
 
+    # GlaceConversion(
+    #     source='renders',
+    #     path_to_glace=path_to_data / 'GLACE/notre dame B (orbit renders)/',
+    #     path_to_renders=path_to_data / 'Evaluation/notre dame B/inputs/database/',
+    # )
+
     GlaceConversion(
         source='renders',
-        path_to_glace=path_to_data / 'GLACE/notre dame B (orbit renders)/',
-        path_to_renders=path_to_data / 'Evaluation/notre dame B/inputs/database/',
+        path_to_glace=path_to_data / 'GLACE/notre dame B (SFM renders)/',
+        path_to_renders=path_to_data / 'Evaluation/notre dame B (SFM)/ground truth/renders/',
+        num_test=100,
     )
 
 
