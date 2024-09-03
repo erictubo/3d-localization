@@ -78,6 +78,7 @@ class GlaceConversion:
     def convert_rendered_depth_maps(self):
         """
         Convert depth maps from path_to_renders/depth_maps/*.npz to train/depth_maps/*.npy.
+        Change m to mm.
         """
 
         database_depth = list(self.path_to_renders.glob('depth/*.npz'))
@@ -95,8 +96,9 @@ class GlaceConversion:
             else: split = 'train'
 
             depth_map = np.load(file)['depth']
+            depth_map_mm = depth_map * 1000
             output_file = self.path_to_glace / split / 'depth' / file.name.replace('.npz', '.npy')
-            np.save(output_file, depth_map)
+            np.save(output_file, depth_map_mm)
 
 
     # def convert_scene_coordinates(self):
@@ -312,14 +314,14 @@ if __name__ == '__main__':
         [0, 0, 0, 1]
     ])
 
-    # path_to_data = Path('/home/johndoe/Documents/data/')
-    path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
+    # path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
+    path_to_data = Path('/home/johndoe/Documents/data/')
 
 
 
     GlaceConversion(
         source='renders',
-        path_to_glace=path_to_data / 'GLACE/notre dame B/',
+        path_to_glace=path_to_data / 'GLACE/notre dame B (orbit renders)/',
         path_to_renders=path_to_data / 'Evaluation/notre dame B/inputs/database/',
     )
 
