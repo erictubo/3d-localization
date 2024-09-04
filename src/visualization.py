@@ -120,16 +120,27 @@ class Visualization:
             path_to_scene_coordinates: Path,
             name: str,
             path_to_output: Path = None,
+            format: str = 'npz',
         ):
         """
         Visualize scene coordinates.
         """
 
         name = name.split('.')[0]
-        coordinates_name = name + '.npz'
+        if format == 'dat':
+            import torch
+            coordinates_name = name + '.dat'
+            coordinates = torch.load(path_to_scene_coordinates / coordinates_name)
 
-        coordinates = np.load(path_to_scene_coordinates / coordinates_name)['scene_coordinates']
+            # Format:(3, H, W)
+            # Convert to numpy array of shape (H, W, 3)
+            coordinates = coordinates.permute(1, 2, 0).numpy()
+        else:
+            coordinates_name = name + '.npz'
+            coordinates = np.load(path_to_scene_coordinates / coordinates_name)['scene_coordinates']
 
+
+        print(coordinates.shape)
 
         cmap = plt.get_cmap('viridis')
 
@@ -171,9 +182,17 @@ if __name__ == '__main__':
 
     # Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, path_to_overlays)
 
-    path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/inputs/database/scene_coordinates/')
+    path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/Evaluation/notre dame B/inputs/database/scene coordinates/')
 
-    names = ['f30_d110_z20_h195.npz', 'f30_d110_z20_h210.npz', 'f30_d110_z20_h225.npz', 'f30_d110_z20_h240.npz', 'f30_d110_z20_h255.npz']
+    names = ['f30_d110_z20_h195.npz'] #, 'f30_d110_z20_h210.npz', 'f30_d110_z20_h225.npz', 'f30_d110_z20_h240.npz', 'f30_d110_z20_h255.npz']
 
     for name in names:
         Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name)
+
+    path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/init/')
+    format = 'dat'
+
+    names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
+
+    for name in names:
+        Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name, format=format, path_to_output=path_to_scene_coordinates)
