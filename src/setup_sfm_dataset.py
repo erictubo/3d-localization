@@ -9,7 +9,6 @@ from scipy.spatial.transform import Rotation
 from pyquaternion import Quaternion
 import numpy as np
 import torch
-from skimage import io
 
 from model_conversion import *
 
@@ -117,7 +116,7 @@ if __name__ == '__main__':
 
     for cam_idx in range(num_cams):
 
-        if num_test > 0 and cam_idx >= num_cams - num_test:
+        if num_test > 0 and cam_idx < num_test:
             split = 'test'
         else:
             split = 'train'
@@ -154,7 +153,7 @@ if __name__ == '__main__':
 
 
         # IMAGE
-        image = io.imread('images/' + image_file)
+        image = cv.imread('images/' + image_file)
 
         img_aspect = image.shape[0] / image.shape[1]
 
@@ -173,7 +172,7 @@ if __name__ == '__main__':
 
         image = cv.resize(image, (img_w, img_h))
         
-        io.imsave(split + '/rgb/' + image_file, image)
+        cv.imwrite(split + '/rgb/' + image_file, image)
 
 
         # INTRINSICS
