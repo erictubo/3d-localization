@@ -34,6 +34,9 @@ def convert_matrix_to_pose(T: np.ndarray) -> np.ndarray:
     assert T.shape == (4,4), T.shape
     t = T[:3, 3]
     R = T[:3, :3]
+    # assert rotation matrix only contains rotation
+    assert np.allclose(np.linalg.det(R), 1), 'Rotation matrix is not orthogonal.'
+
     q = Quaternion(matrix=R).q
     pose = np.append(t, q)
 
