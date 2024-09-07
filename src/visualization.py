@@ -121,6 +121,9 @@ class Visualization:
             name: str,
             path_to_output: Path = None,
             format: str = 'npz',
+            x_range: Tuple[int, int] = None, # (min, max) for color of X coordinate
+            y_range: Tuple[int, int] = None, # (min, max) for color of Y coordinate
+            z_range: Tuple[int, int] = None, # (min, max) for color of Z coordinate
         ):
         """
         Visualize scene coordinates.
@@ -139,16 +142,29 @@ class Visualization:
             coordinates_name = name + '.npz'
             coordinates = np.load(path_to_scene_coordinates / coordinates_name)['scene_coordinates']
 
-
-        print(coordinates.shape)
-
         cmap = plt.get_cmap('viridis')
 
         mask = np.all(coordinates == [0., 0., 0.], axis=-1)
         masked_coordinates = np.ma.masked_array(coordinates, mask=np.repeat(mask[:, :, np.newaxis], 3, axis=2))
         
-        # Normalize the coordinates to the range [0, 1]
-        normalized_coordinates = (masked_coordinates - masked_coordinates.min(axis=(0, 1))) / (masked_coordinates.max(axis=(0, 1)) - masked_coordinates.min(axis=(0, 1)))
+        min_coords = np.floor(masked_coordinates.min(axis=(0, 1)))
+        max_coords = np.ceil(masked_coordinates.max(axis=(0, 1)))
+
+        if (x_range and y_range and z_range):
+
+            min_coords_limit = np.array([x_range[0], y_range[0], z_range[0]])
+            max_coords_limit = np.array([x_range[1], y_range[1], z_range[1]])
+
+            assert (min_coords >= min_coords_limit).all() and (max_coords <= max_coords_limit).all(), \
+                f'min_coords {min_coords} and max_coords {max_coords} are not within the specified ranges'
+
+            # Normalize the coordinates such that [min, max] -> [0, 1]
+            normalized_coordinates = (masked_coordinates - min_coords_limit) / (max_coords_limit - min_coords_limit)
+
+        else:
+            # Normalize the coordinates to the range [0, 1]
+            normalized_coordinates = (masked_coordinates - min_coords) / (max_coords - min_coords)
+
 
         # set all masked values to white
         normalized_coordinates = np.where(mask[:, :, np.newaxis], 1, normalized_coordinates)
@@ -182,17 +198,26 @@ if __name__ == '__main__':
 
     # Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, path_to_overlays)
 
-    path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/Evaluation/notre dame B/inputs/database/scene coordinates/')
+    # path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/Evaluation/notre dame B/inputs/database/scene coordinates/')
 
-    names = ['f30_d110_z20_h195.npz'] #, 'f30_d110_z20_h210.npz', 'f30_d110_z20_h225.npz', 'f30_d110_z20_h240.npz', 'f30_d110_z20_h255.npz']
+    # names = ['f30_d110_z20_h195.npz'] #, 'f30_d110_z20_h210.npz', 'f30_d110_z20_h225.npz', 'f30_d110_z20_h240.npz', 'f30_d110_z20_h255.npz']
 
-    for name in names:
-        Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name)
+    # for name in names:
+    #     Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name)
 
     path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/init/')
     format = 'dat'
 
-    names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
+    # names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
+
+    names = ['99953487_537736817', '99959942_5064636197', '99980504_3809078952']
 
     for name in names:
-        Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name, format=format, path_to_output=path_to_scene_coordinates)
+        Visualization.visualize_scene_coordinate_map(
+            path_to_scene_coordinates,
+            name, format=format,
+            path_to_output=path_to_scene_coordinates,
+            x_range=(-120, 100),
+            y_range=(-80, 80),
+            z_range=(-20, 120),
+        )
