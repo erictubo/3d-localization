@@ -68,6 +68,7 @@ class Visualization:
             path_to_depth: Path,
             name: str,
             path_to_output: Path = None,
+            extension: str = 'npz'
         ):
         """
         Visualize npy/npz depth map with colors according to depth values and a legend.
@@ -77,10 +78,12 @@ class Visualization:
         name = name.split('.')[0]
         # if not name.endswith('_depth'):
         #     name += '_depth'
-        depth_name = name + '.npz'
+        depth_name = name + '.' + extension.lower()
 
-        depth_map = np.load(path_to_depth / depth_name)['depth']
-
+        if extension == 'npz':
+            depth_map = np.load(path_to_depth / depth_name)['depth']
+        elif extension == 'npy':
+            depth_map = np.load(path_to_depth / depth_name)
 
         cmap = plt.get_cmap('viridis')
         cmap.set_bad(color='white')
@@ -206,6 +209,7 @@ if __name__ == '__main__':
     #     Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name)
 
     path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/init/')
+    path_to_depth = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/depth/')
     format = 'dat'
 
     # names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
@@ -213,11 +217,16 @@ if __name__ == '__main__':
     names = ['99953487_537736817', '99959942_5064636197', '99980504_3809078952']
 
     for name in names:
-        Visualization.visualize_scene_coordinate_map(
-            path_to_scene_coordinates,
-            name, format=format,
-            path_to_output=path_to_scene_coordinates,
-            x_range=(-120, 100),
-            y_range=(-80, 80),
-            z_range=(-20, 120),
+        Visualization.visualize_depth_map(
+            path_to_depth=path_to_depth,
+            name=name,
+            extension='npy',
         )
+        # Visualization.visualize_scene_coordinate_map(
+        #     path_to_scene_coordinates,
+        #     name, format=format,
+        #     path_to_output=path_to_scene_coordinates,
+        #     # x_range=(-120, 100),
+        #     # y_range=(-80, 80),
+        #     # z_range=(-20, 120),
+        # )
