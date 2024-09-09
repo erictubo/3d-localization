@@ -1,11 +1,18 @@
 from pathlib import Path
 from typing import List
 import numpy as np
-from transformations import decompose_matrix, compose_matrix
+import cv2 as cv
+import torch
+from transformations import compose_matrix, decompose_matrix
 
 from colmap_model import ColmapModelReader
 from model_conversion import *
 
+
+
+# IDEA: integrate with setup_sfm_dataset.py
+# to generate depth maps and scene coordinates
+# from reconstructed SFM data in addition to renders
 
 class GlaceConversion:
     """
@@ -23,6 +30,9 @@ class GlaceConversion:
             sfm_names: list = None, # list of sfm names, else all images from SFM
             T_sfm_cad: np.ndarray = None,
             num_test: int = 0,
+            depth_maps: bool = False,
+            # scene_coordinates: bool = False,
+            path_to_nvm: Path = None,
         ):
 
         self.path_to_glace = path_to_glace
@@ -40,10 +50,16 @@ class GlaceConversion:
             names = [name.split('.')[0] for name in names]
             names.sort()
 
-            self.copy_rendered_images(names)
-            self.convert_rendered_intrinsics(names)
-            self.convert_rendered_poses(names)
-            self.convert_rendered_depth_maps(names)
+            self._copy_rendered_images(names)
+            self._convert_rendered_intrinsics(names)
+            self._convert_rendered_poses(names)
+
+            if depth_maps:
+                self._convert_rendered_depth_maps(names)
+
+
+            # if scene_coordinates:
+            #     # generate scene coordinates in GLACE format from depth maps
         
         elif source.lower() == 'sfm':
             assert path_to_colmap_model, "Missing input: path_to_colmap_model"
@@ -54,8 +70,14 @@ class GlaceConversion:
             self.T_sfm_cad = T_sfm_cad
             self.T_cad_sfm = np.linalg.inv(self.T_sfm_cad)
 
+            self.scale = np.linalg.norm(self.T_sfm_cad[:3, 3])
+            print(f'Scale: {self.scale}')
+            assert self.scale > 1, "Invalid scale"
+
+            self.path_to_images = self.path_to_colmap_model.parent / 'images'
+
             if not sfm_names:
-                sfm_names = [image.name for image in self.path_to_colmap_model.parent.glob('images/*')]
+                sfm_names = [image.name for image in self.path_to_images.glob('*')]
             sfm_names = [name.split('.')[0] for name in sfm_names]
             sfm_names.sort()
 
@@ -65,57 +87,20 @@ class GlaceConversion:
 
             self.colmap_model = ColmapModelReader(self.path_to_colmap_model)
 
-            self.copy_sfm_images(sfm_names)
-            self.convert_sfm_intrinsics(sfm_names)
-            self.convert_sfm_poses(sfm_names)
+            self._copy_sfm_images(sfm_names)
+            self._convert_sfm_intrinsics(sfm_names)
+            self._convert_sfm_poses(sfm_names)
+
+            if depth_maps:
+                assert path_to_nvm, "Missing input: path_to_nvm"
+                self.path_to_nvm = path_to_nvm
+                self._generate_from_nvm(sfm_names, output='depth')
 
         else:
             raise(ValueError, 'Specify a source: renders or sfm')
-        
-        # TODO: implement scene coordinates
-        # Make sure they are in the correct frame as well (CAD)
-        # self.copy_scene_coordinates()
-
-        # INFO: for SFM reconstruction -> scene coordinates
-        # see GLACE setup_cambridge.py
-
-    def convert_rendered_depth_maps(self, names: List[str]):
-        """
-        Convert depth maps from path_to_renders/depth_maps/*.npz to train/depth_maps/*.npy.
-        Change m to mm.
-        """
-
-        for split in ['train', 'test']:
-            path = self.path_to_glace / split / 'depth'
-            if not path.exists(): path.mkdir()
-        
-        for i, name in enumerate(names):
-            if i < self.num_test: split = 'test'
-            else: split = 'train'
-
-            depth_map = ModelConversion.convert_depth_map_from_exr_to_numpy(self.path_to_renders / 'depth/', name)
-            depth_map_mm = depth_map * 1000
-            output_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
-            np.save(output_file, depth_map_mm)
 
 
-    # def convert_scene_coordinates(self):
-    #     """
-    #     Convert scene coordinates from 
-    #     """
-
-    #     # INPUT: path_to_renders/scene_coordinates/*.npz
-    #     # npz: dict['scene_coordinates'] = scene_coordinates ndarray (w x h x 3)
-    #     # w, h = image width, height
-
-    #     # OUTPUT: train/init/* torch tensors (3 x H x W)
-    #     # H, W = SCR output dimension = 640 x 480 (480 fixed, width based on aspect ratio)
-    #     # invalid set to zero
-
-    #     pass
-
-
-    def copy_rendered_images(self, names: List[str]):
+    def _copy_rendered_images(self, names: List[str]):
         """
         Copy images from path_to_renders/images/* to train/rgb/*
         """
@@ -132,10 +117,32 @@ class GlaceConversion:
             output_image = self.path_to_glace / split / 'rgb' / f'{name}.png'
             output_image.write_bytes(input_image.read_bytes())
         
-        print("Database images copied successfully")
+        print("Rendered images copied successfully")
 
 
-    def convert_rendered_intrinsics(self, names: List[str]):
+    def _copy_sfm_images(self, sfm_names: List[str]):
+        """
+        Copy images from path_to_colmap_model/../images/* to test/rgb/*
+        """
+
+        for split in ['train', 'test']:
+            path = self.path_to_glace / split / 'rgb'
+            if not path.exists(): path.mkdir()
+
+        path_to_colmap_images = self.path_to_colmap_model.parent / 'images/'
+
+        for i, name in enumerate(sfm_names):
+            if i < self.num_test: split = 'test'
+            else: split = 'train'
+
+            image = path_to_colmap_images / f'{name}.jpg'
+            output_image = self.path_to_glace / split / 'rgb' / f'{name}.jpg'
+            output_image.write_bytes(image.read_bytes())
+
+        print("SFM images copied successfully")
+
+
+    def _convert_rendered_intrinsics(self, names: List[str]):
         """
         Convert path_to_renders/intrinsics/*.txt (w, h, f, f_unit, cx, cy) to train/calibration/*.txt (camera matrix) per image.
         """
@@ -169,59 +176,10 @@ class GlaceConversion:
             output_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
             np.savetxt(output_file, K, fmt='%15.7e')
         
-        print("Database intrinsics converted successfully")
-
-
-    def convert_rendered_poses(self, names: List[str]):
-        """
-        Convert path_to_renders/poses/*.txt (px, py, pz, qw, qx, qy, qz) to poses/*.txt (transformation matrix) per image
-        Format: CAD (inverted Blender camera) -> CAD (conventional camera)
-        """
-
-        for split in ['train', 'test']:
-            path = self.path_to_glace / split / 'poses'
-            if not path.exists(): path.mkdir()
-
-        for i, name in enumerate(names):
-            if i < self.num_test: split = 'test'
-            else: split = 'train'
-
-            file = self.path_to_renders / 'poses' / f'{name}.txt'
-
-            pose_cad_cam_blender = np.loadtxt(file)
-            T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
-
-            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender,'CAD')
-
-            output_file = self.path_to_glace / split / 'poses' / file.name
-            np.savetxt(output_file, T_cad_cam, fmt='%15.7e')
-        
-        print("Database poses converted successfully")
-
-
-    def copy_sfm_images(self, sfm_names: List[str]):
-        """
-        Copy images from path_to_colmap_model/../images/* to test/rgb/*
-        """
-
-        for split in ['train', 'test']:
-            path = self.path_to_glace / split / 'rgb'
-            if not path.exists(): path.mkdir()
-
-        path_to_colmap_images = self.path_to_colmap_model.parent / 'images/'
-
-        for i, name in enumerate(sfm_names):
-            if i < self.num_test: split = 'test'
-            else: split = 'train'
-
-            image = path_to_colmap_images / f'{name}.jpg'
-            output_image = self.path_to_glace / split / 'rgb' / f'{name}.jpg'
-            output_image.write_bytes(image.read_bytes())
-
-        print("SFM images copied successfully")
+        print("Rendered intrinsics converted successfully")
     
 
-    def convert_sfm_intrinsics(self, sfm_names: List[str]):
+    def _convert_sfm_intrinsics(self, sfm_names: List[str]):
         """
         Convert SFM intrinsics from colmap_model to train/calibration/*.txt (camera matrix) per image
         """
@@ -254,7 +212,34 @@ class GlaceConversion:
         print("SFM intrinsics converted successfully")
 
 
-    def convert_sfm_poses(self, sfm_names: List[str]):
+    def _convert_rendered_poses(self, names: List[str]):
+        """
+        Convert path_to_renders/poses/*.txt (px, py, pz, qw, qx, qy, qz) to poses/*.txt (transformation matrix) per image
+        Format: CAD (inverted Blender camera) -> CAD (conventional camera)
+        """
+
+        for split in ['train', 'test']:
+            path = self.path_to_glace / split / 'poses'
+            if not path.exists(): path.mkdir()
+
+        for i, name in enumerate(names):
+            if i < self.num_test: split = 'test'
+            else: split = 'train'
+
+            file = self.path_to_renders / 'poses' / f'{name}.txt'
+
+            pose_cad_cam_blender = np.loadtxt(file)
+            T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
+
+            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender,'CAD')
+
+            output_file = self.path_to_glace / split / 'poses' / file.name
+            np.savetxt(output_file, T_cad_cam, fmt='%15.7e')
+        
+        print("Rendered poses converted successfully")
+
+
+    def _convert_sfm_poses(self, sfm_names: List[str]):
         """
         Convert SFM poses from colmap_model to test/poses/*.txt (transformation matrix) per image
         """
@@ -281,8 +266,207 @@ class GlaceConversion:
         print("SFM poses converted successfully")
     
 
-    def copy_scene_coordinates():
-        pass
+    def _convert_rendered_depth_maps(self, names: List[str], to_mm=True):
+        """
+        Convert depth maps from path_to_renders/depth_maps/*.npz to train/depth_maps/*.npy.
+        Change m to mm.
+        """
+
+        for split in ['train', 'test']:
+            path = self.path_to_glace / split / 'depth'
+            if not path.exists(): path.mkdir()
+        
+        for i, name in enumerate(names):
+            if i < self.num_test: split = 'test'
+            else: split = 'train'
+
+            depth_map = ModelConversion.convert_depth_map_from_exr_to_numpy(self.path_to_renders / 'depth/', name)
+            if to_mm:
+                depth_map *= 1000
+            output_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
+            np.save(output_file, depth_map)
+    
+        print("Rendered depth maps converted successfully")
+
+    
+    def _generate_from_nvm(self, names: List[str], output='depth', to_mm = True, nn_subsampling = 8):
+        """
+        Generate depth maps from NVM file
+        """
+
+        assert output in ['depth', 'scene_coordinates'], "Invalid output type"
+
+        for split in ['train', 'test']:
+            path = self.path_to_glace / split / 'depth'
+            if not path.exists(): path.mkdir()
+
+        print("Loading SfM reconstruction...")
+
+        file = open(self.path_to_nvm / 'reconstruction.nvm', 'r')
+        reconstruction = file.readlines()
+        file.close()
+
+        num_cams = int(reconstruction[2])
+        num_pts = int(reconstruction[num_cams + 4])
+
+        # read points
+        pts_dict = {}
+        for cam_idx in range(0, num_cams):
+            pts_dict[cam_idx] = []
+
+        pt = pts_start = num_cams + 5
+        pts_end = pts_start + num_pts
+
+        while pt < pts_end:
+
+            pt_list = reconstruction[pt].split()
+            pt_3D = [float(x) for x in pt_list[0:3]]
+            pt_3D.append(1.0)
+
+            for pt_view in range(0, int(pt_list[6])):
+                cam_view = int(pt_list[7 + pt_view * 4])
+                pts_dict[cam_view].append(pt_3D)
+
+            pt += 1
+        
+        print("Reconstruction contains %d cameras and %d 3D points." % (num_cams, num_pts))
+
+        if output == 'scene coordinates':
+            conversion = ModelConversion(T_sfm_cad=self.T_sfm_cad)
+
+            T_sfm_cad = torch.tensor(T_sfm_cad).float()
+            T_cad_sfm = torch.tensor(T_cad_sfm).float()
+
+
+        for cam_idx in range(num_cams):
+
+            # Read data from reconstruction file
+            line = reconstruction[3 + cam_idx].split()
+            image_file = line[0]
+            focal_length = float(line[1])
+
+            name = image_file.split('.')[0]
+
+            if self.num_test > 0 and names.index(name) < self.num_test:
+                split = 'test'
+            else:
+                split = 'train'
+
+            print(f"{cam_idx + 1} / {num_cams}: {image_file} -> {split}")
+
+            # POSE
+            t_sfm_cam = np.asarray([float(r) for r in line[6:9]])   # camera center in SfM coordinate system
+
+            q_cam_sfm = np.asarray([float(r) for r in line[2:6]])   # camera rotation in CAM frame
+
+            R_cam_sfm = Quaternion(q_cam_sfm).rotation_matrix
+            R_sfm_cam = R_cam_sfm.T
+
+            T_sfm_cam = np.eye(4)
+            T_sfm_cam[:3, :3] = R_sfm_cam
+            T_sfm_cam[:3, 3] = t_sfm_cam
+
+            T_cam_sfm = np.linalg.inv(T_sfm_cam)
+
+
+            T_cam_sfm = torch.tensor(T_cam_sfm).float()
+            T_sfm_cam = torch.tensor(T_sfm_cam).float()
+
+
+            # Get image dimensions
+            image = cv.imread(self.path_to_images / image_file)
+            img_h, img_w = image.shape[0], image.shape[1]
+
+            out_w = int(np.ceil(img_w / nn_subsampling))
+            out_h = int(np.ceil(img_h / nn_subsampling))
+
+            out_scale = out_w / image.shape[1]
+            img_scale = img_w / image.shape[1]
+
+            # SCENE COORDINATES
+
+            # load 3D points from reconstruction
+            pts_3D = torch.tensor(pts_dict[cam_idx])
+
+            coords_sfm = torch.zeros((3, out_h, out_w))
+            depth_sfm = torch.zeros((out_h, out_w))
+
+            fine = 0
+            conflict = 0
+
+            for pt_idx in range(0, pts_3D.size(0)):
+
+                scene_pt = pts_3D[pt_idx]
+                scene_pt = scene_pt.unsqueeze(0)
+                scene_pt = scene_pt.transpose(0, 1)
+
+                # scene to camera coordinates
+                cam_pt = torch.mm(T_cam_sfm, scene_pt)
+
+                # projection to image
+                img_pt = cam_pt[0:2, 0] * focal_length / cam_pt[2, 0] * out_scale
+
+                y = img_pt[1] + out_h / 2
+                x = img_pt[0] + out_w / 2
+
+                x = int(torch.clamp(x, min=0, max=coords_sfm.size(2) - 1))
+                y = int(torch.clamp(y, min=0, max=coords_sfm.size(1) - 1))
+
+                if cam_pt[2, 0] > 1000:  # filter some outlier points (large depth)
+                    continue
+
+                if depth_sfm[y, x] == 0 or depth_sfm[y, x] > cam_pt[2, 0]:
+                    depth_sfm[y, x] = cam_pt[2, 0]
+                    coords_sfm[:, y, x] = pts_3D[pt_idx, 0:3]
+
+            if output == 'depth':
+                depth_cad = depth_sfm * self.scale
+                
+                depth_map = depth_cad.numpy()
+
+                if to_mm:
+                    depth_map *= 1000
+                output_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
+                np.save(output_file, depth_map)
+            
+            elif output == 'scene_coordinates':
+                valid_mask = coords_sfm.sum(dim=0) != 0
+
+                valid_points = coords_sfm[:, valid_mask]
+                valid_points_homogeneous = torch.cat([valid_points, torch.ones(1, valid_points.size(1))], dim=0)
+
+                print(valid_points_homogeneous.shape)
+
+                transformed_points = torch.mm(T_cad_sfm, valid_points_homogeneous)
+                transformed_points = transformed_points[0:3, :]
+
+                coords_cad = torch.zeros((3, out_h, out_w))
+                coords_cad[:, valid_mask] = transformed_points
+
+                output_file = self.path_to_glace / split / 'init' / f'{name}.dat'
+
+                torch.save(coords_cad, output_file)
+
+
+            
+            
+                
+
+
+    # def convert_scene_coordinates(self):
+    #     """
+    #     Convert scene coordinates from 
+    #     """
+
+    #     # INPUT: path_to_renders/scene_coordinates/*.npz
+    #     # npz: dict['scene_coordinates'] = scene_coordinates ndarray (w x h x 3)
+    #     # w, h = image width, height
+
+    #     # OUTPUT: train/init/* torch tensors (3 x H x W)
+    #     # H, W = SCR output dimension = 640 x 480 (480 fixed, width based on aspect ratio)
+    #     # invalid set to zero
+
+    #     pass
 
 
 if __name__ == '__main__':
@@ -312,11 +496,23 @@ if __name__ == '__main__':
     #     path_to_renders=path_to_data / 'Evaluation/notre dame B/inputs/database/',
     # )
 
+    # GlaceConversion(
+    #     source='renders',
+    #     path_to_glace=path_to_data / 'GLACE/notre dame B (SFM renders)/',
+    #     path_to_renders=path_to_data / 'Evaluation/notre dame B (SFM)/ground truth/renders/',
+    #     num_test=100,
+    # )
+
+    path_to_colmap_model = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/3D Models/Notre Dame/Reference/dense/sparse')
+    # - SFM
     GlaceConversion(
-        source='renders',
-        path_to_glace=path_to_data / 'GLACE/notre dame B (SFM renders)/',
-        path_to_renders=path_to_data / 'Evaluation/notre dame B (SFM)/ground truth/renders/',
-        num_test=100,
+        source='SFM',
+        path_to_colmap_model= path_to_colmap_model,
+        path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)'),
+        T_sfm_cad=T_notre_dame,
+        num_test=0,
+        depth_maps=True,
+        path_to_nvm=path_to_colmap_model,
     )
 
 
