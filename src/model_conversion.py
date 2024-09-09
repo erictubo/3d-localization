@@ -85,7 +85,8 @@ class ModelConversion:
     """
     def __init__(
             self,
-            path_to_ground_truth: Path,
+            path_to_ground_truth: Path = None,
+            T_sfm_cad: np.ndarray = None,
             path_to_database: Path = None,
             images_prefix: str = 'images/',
             intrinsics_prefix: str = 'intrinsics/',
@@ -94,14 +95,19 @@ class ModelConversion:
             scene_coordinates_prefix: str = 'scene_coordinates/',
             ):
         
-        self.path_to_ground_truth = path_to_ground_truth
-        # self.T_cad_sfm, self.s_cad_sfm = self.read_registration_data(path_to_ground_truth / 'T_cad_sfm.txt')
-        # self.T_sfm_cad = np.linalg.inv(self.T_cad_sfm)
-        self.T_sfm_cad, self.s_sfm_cad = self.read_registration_data(path_to_ground_truth / 'T_sfm_cad.txt')
+        assert path_to_ground_truth or T_sfm_cad, 'Either path_to_ground_truth or T_sfm_cad should be provided.'
+        
+        if path_to_ground_truth:
+            self.path_to_ground_truth = path_to_ground_truth
+            self.T_sfm_cad, self.s_sfm_cad = self.read_registration_data(path_to_ground_truth / 'T_sfm_cad.txt')
+        elif T_sfm_cad:
+            assert T_sfm_cad.shape == (4,4), T_sfm_cad.shape
+            self.T_sfm_cad = T_sfm_cad
+            self.s_sfm_cad = decompose_matrix(T_sfm_cad)[0]
+
         self.T_cad_sfm = np.linalg.inv(self.T_sfm_cad)
         self.s_cad_sfm = 1/self.s_sfm_cad
 
-        self.path_to_ground_truth = path_to_ground_truth
 
         if path_to_database:
             self.path_to_database = path_to_database
