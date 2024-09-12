@@ -11,12 +11,88 @@ class Visualization:
         pass
 
     @staticmethod
+    def overlay_query_and_rendered_image(
+            query_image: Image,
+            render_image: Image,
+            subsample: int = 1,
+            tiles: Tuple[int, int] = None,
+            tiles_pix: Tuple[int, int] = (160, 160),
+        ):
+
+        # check that subsample is a power of 2
+        assert subsample & (subsample - 1) == 0, 'Subsample must be a power of 2'
+
+        # Resize the images while maintaining aspect ratio
+        # check that query image and render image have the same dimensions
+        assert query_image.size == render_image.size, \
+            f'Query image size {query_image.size} and render image size {render_image.size} do not match'
+        
+        init_width, init_height = query_image.size
+
+        # resize to 960x640 (depends on the aspect ratio)
+        if init_width > init_height:
+            width, height = 960, 640
+        else:
+            width, height = 640, 960
+        
+        width, height = width // subsample, height // subsample
+                    
+        query_image = query_image.resize((width, height), Image.Resampling.LANCZOS)
+        render_image = render_image.resize((width, height), Image.Resampling.LANCZOS)
+
+        print(f'Query image size: {query_image.size}')
+        print(f'Render image size: {render_image.size}')
+
+        if tiles:
+            grid_width, grid_height = tiles
+            cell_width, cell_height = width // grid_width, height // grid_height
+        elif tiles_pix:
+            cell_width, cell_height = (tiles_pix[0] // subsample, tiles_pix[1] // subsample)
+            grid_width, grid_height = width // cell_width, height // cell_height
+        else:
+            raise ValueError('Either tiles or tiles_pix must be specified')
+        
+        print(f'Grid size: {grid_width}x{grid_height}')
+        print(f'Cell size: {cell_width}x{cell_height}')
+
+        # Convert images to numpy arrays for easier manipulation
+        query_array = np.array(query_image)
+        render_array = np.array(render_image)
+
+        # Subsample the arrays
+        query_array = query_array[:, :, :3]
+        render_array = render_array[:, :, :3]
+
+        # Create a new blank image for the grid
+        combined_image = Image.new('RGB', (width, height))
+        combined_array = np.array(combined_image)
+
+
+        for i in range(grid_height):
+            for j in range(grid_width):
+                cell_slice = slice(i*cell_height, (i+1)*cell_height), slice(j*cell_width, (j+1)*cell_width)
+                
+                if (i + j) % 2 == 0:  # Even cells get query image
+                    combined_array[cell_slice] = query_array[cell_slice]
+                else:  # Odd cells get render image
+                    combined_array[cell_slice] = render_array[cell_slice]
+
+        # Convert back to PIL Image
+        combined_image = Image.fromarray(combined_array)
+        
+        return combined_image
+
+    @staticmethod
     def overlay_query_and_rendered_images(
             path_to_query_images: Path,
             path_to_render_images: Path,
-            path_to_overlays: Path):
+            path_to_overlays: Path = None,
+            subsample: int = 1,
+            tiles: Tuple[int, int] = None,
+            tiles_pix: Tuple[int, int] = (160, 160),
+        ):
         """
-        Overlay query and rendered images in 2x2 grid.
+        Overlay query and rendered images in NxM grid.
         """
         assert path_to_query_images.exists(), path_to_query_images
         assert path_to_render_images.exists(), path_to_render_images
@@ -38,37 +114,27 @@ class Visualization:
                 query_image = Image.open(path_to_query_images / query_name)
                 render_image = Image.open(path_to_render_images / render_name)
 
-                # Resize the images while maintaining aspect ratio
-                # check that query image and render image have the same dimensions
-                if query_image.size != render_image.size:
-                    width, height = 600, 600  # Desired size
-                else:
-                    width, height = query_image.size
-                query_image = query_image.resize((width, height), Image.Resampling.LANCZOS)
-                render_image = render_image.resize((width, height), Image.Resampling.LANCZOS)
-
-                # Create a new blank image with combined dimensions
-                combined_width = width
-                combined_height = height
-                combined_image = Image.new('RGB', (combined_width, combined_height))
-
-                # Paste the cropped images onto the combined image
-                combined_image.paste(query_image.crop((0, 0, width//2, height//2)), (0, 0))  # Top left quarter
-                combined_image.paste(query_image.crop((width//2, height//2, width, height)), (width//2, height//2))  # Bottom right quarter
-                combined_image.paste(render_image.crop((0, height//2, width//2, height)), (0, height//2))  # Top right quarter
-                combined_image.paste(render_image.crop((width//2, 0, width, height//2)), (width//2, 0))  # Bottom left quarter
+                combined_image = Visualization.overlay_query_and_rendered_image(
+                    query_image,
+                    render_image,
+                    subsample=subsample,
+                    tiles=tiles, tiles_pix=tiles_pix,
+                )
 
                 # Save the combined image
-                if not path_to_overlays.exists():
-                    path_to_overlays.mkdir()
-                combined_image.save(path_to_overlays / query_name)
+                if path_to_overlays:
+                    if not path_to_overlays.exists():
+                        path_to_overlays.mkdir()
+                    combined_image.save(path_to_overlays / query_name)
+                else:
+                    combined_image.show()
 
     @staticmethod
     def visualize_depth_map(
             path_to_depth: Path,
             name: str,
             path_to_output: Path = None,
-            extension: str = 'npz'
+            extension: str = 'npz',
         ):
         """
         Visualize npy/npz depth map with colors according to depth values and a legend.
@@ -195,11 +261,16 @@ class Visualization:
 
 if __name__ == '__main__':
 
-    # path_to_query_images = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/inputs/query/images')
-    # path_to_render_images = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/outputs/meshloc_out/patch2pix/renders/images')
-    # path_to_overlays = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/notre_dame_B/outputs/meshloc_out/patch2pix/overlays')
+    path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
 
-    # Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, path_to_overlays)
+    path_to_query_images = path_to_data / 'Evaluation/notre dame B/inputs/query/images'
+    path_to_render_images = path_to_data / 'Evaluation/notre dame B/ground truth/renders/images'
+    path_to_overlays = path_to_data / 'Evaluation/notre dame B/ground truth/overlays'
+    path_to_overlays_subsampled = path_to_data / 'Evaluation/notre dame B/ground truth/overlays/subsampled'
+
+    Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, path_to_overlays, subsample=1)
+    Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, path_to_overlays_subsampled, subsample=8)
+    Visualization.overlay_query_and_rendered_images(path_to_query_images, path_to_render_images, subsample=8)
 
     # path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/Evaluation/notre dame B/inputs/database/scene coordinates/')
 
@@ -208,20 +279,20 @@ if __name__ == '__main__':
     # for name in names:
     #     Visualization.visualize_scene_coordinate_map(path_to_scene_coordinates, name)
 
-    path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/init/')
-    path_to_depth = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/depth/')
-    format = 'dat'
+    # path_to_scene_coordinates = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/init/')
+    # path_to_depth = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)/train/depth/')
+    # format = 'dat'
 
-    # names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
+    # # names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
 
-    names = ['99953487_537736817', '99959942_5064636197', '99980504_3809078952']
+    # names = ['99953487_537736817', '99959942_5064636197', '99980504_3809078952']
 
-    for name in names:
-        Visualization.visualize_depth_map(
-            path_to_depth=path_to_depth,
-            name=name,
-            extension='npy',
-        )
+    # for name in names:
+    #     Visualization.visualize_depth_map(
+    #         path_to_depth=path_to_depth,
+    #         name=name,
+    #         extension='npy',
+    #     )
         # Visualization.visualize_scene_coordinate_map(
         #     path_to_scene_coordinates,
         #     name, format=format,
