@@ -342,7 +342,7 @@ class GlaceConversion:
         conversion = ModelConversion(T_sfm_cad=self.T_sfm_cad)
 
         T_sfm_cad = self.T_sfm_cad
-        T_cad_sfm = np.linalg.inv(T_sfm_cad)
+        T_cad_sfm = self.T_cad_sfm
 
         T_sfm_cad = torch.tensor(T_sfm_cad).float()
         T_cad_sfm = torch.tensor(T_cad_sfm).float()
@@ -363,6 +363,7 @@ class GlaceConversion:
                 split = 'train'
 
             print(f"{cam_idx + 1} / {num_cams}: {image_file} -> {split}")
+            print(f"- Focal length: {focal_length}")
 
             # POSE
             t_sfm_cam = np.asarray([float(r) for r in line[6:9]])   # camera center in SfM coordinate system
@@ -378,8 +379,6 @@ class GlaceConversion:
 
             T_cam_sfm = np.linalg.inv(T_sfm_cam)
 
-
-            # POSE
             T_cad_cam = conversion.transform_pose_from_colmap_to_cad_format(T_cam_sfm, to_blender_format=False)
             pose_cad_cam = convert_matrix_to_pose(T_cad_cam)
 
@@ -556,6 +555,8 @@ class GlaceConversion:
                 focal_length *= img_scale
             else:
                 raise NotImplementedError(f"Unit {f_unit} not implemented")
+            
+            print(f"- Focal length: {focal_length}")
 
             intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
             np.savetxt(intrinsics_file, np.array([focal_length]), fmt='%15.7e')
@@ -652,21 +653,22 @@ if __name__ == '__main__':
 
     path_to_colmap_model = path_to_data / '3D Models/Pantheon/Reference/dense/sparse'
 
-    # GlaceConversion(
-    #     source='SFM',
-    #     path_to_colmap_model=path_to_colmap_model,
-    #     path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/pantheon (SFM)'),
-    #     T_sfm_cad=T_pantheon,
-    #     num_test=100,
-    #     depth_maps=True,
-    #     scene_coordinates=True,
-    #     path_to_nvm=path_to_colmap_model,
-    # )
+    GlaceConversion(
+        source='SFM',
+        path_to_colmap_model=path_to_colmap_model,
+        path_to_glace=path_to_data / 'GLACE/pantheon (SFM)',
+        T_sfm_cad=T_pantheon,
+        num_test=100,
+        depth_maps=True,
+        scene_coordinates=True,
+        path_to_nvm=path_to_colmap_model,
+    )
 
     GlaceConversion(
         source='renders',
         path_to_glace=path_to_data / 'GLACE/pantheon (renders)',
         path_to_renders=path_to_data / 'Evaluation/pantheon B/ground truth/renders',
+        num_test=100,
         depth_maps=True,
         scene_coordinates=True,
     )
