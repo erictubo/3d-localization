@@ -47,15 +47,15 @@ class GlaceConversion:
             names = [name.split('.')[0] for name in names]
             names.sort()
 
-            self._copy_rendered_images(names)
-            self._convert_rendered_intrinsics(names)
-            self._convert_rendered_poses(names)
+            # self._copy_rendered_images(names)
+            # self._convert_rendered_intrinsics(names)
+            # self._convert_rendered_poses(names)
 
-            if depth_maps:
-                self._convert_rendered_depth_maps(names)
+            # if depth_maps:
+            #     self._convert_rendered_depth_maps(names)
 
-            # if scene_coordinates:
-            #     # generate scene coordinates in GLACE format from depth maps
+            self._generate_from_renders(names, depth_maps, scene_coordinates)
+
         
         elif source.lower() == 'sfm':
             assert path_to_colmap_model, "Missing input: path_to_colmap_model"
@@ -404,16 +404,16 @@ class GlaceConversion:
                 img_w = int(np.ceil(self.target_height / img_aspect))
                 img_h = self.target_height
 
+            image = cv.resize(image, (img_w, img_h))
+            
+            #cv.imwrite(split + '/rgb/' + image_file, image)
+            cv.imwrite(self.path_to_glace / split / 'rgb' / f'{name}.png', image)
+
             out_w = int(np.ceil(img_w / nn_subsampling))
             out_h = int(np.ceil(img_h / nn_subsampling))
 
             out_scale = out_w / image.shape[1]
             img_scale = img_w / image.shape[1]
-
-            image = cv.resize(image, (img_w, img_h))
-            
-            #cv.imwrite(split + '/rgb/' + image_file, image)
-            cv.imwrite(self.path_to_glace / split / 'rgb' / f'{name}.png', image)
 
 
             # INTRINSICS
@@ -483,25 +483,140 @@ class GlaceConversion:
                 torch.save(coords_cad, coords_file)
 
 
+    def _generate_from_renders(
+            self,
+            names: List[str],
+            depth_maps: bool,
+            scene_coordinates: bool,
+            to_mm = True,
+            nn_subsampling = 8,
+        ):
+
+        # convert renders to GLACE format, with resizing and subsampling
+
+        for split in ['train', 'test']:
+            path = self.path_to_glace / split / 'depth'
+            if not path.exists(): path.mkdir()
+
+            subpaths = ['rgb', 'calibration', 'poses', 'init']
+            if depth_maps: subpaths.append('depth')
+            if scene_coordinates: subpaths.append('init')
+
+            for subpath in subpaths:
+                path = self.path_to_glace / split / subpath
+                if not path.exists(): path.mkdir()
+        
+        total = len(names)
+        for i, name in enumerate(names):
+            if i < self.num_test: split = 'test'
+            else: split = 'train'
+
+            print(f"{i + 1} / {total}: {name} -> {split}")
+
+            # POSE
+            pose_cad_cam_blender = np.loadtxt(self.path_to_renders / 'poses' / f'{name}.txt')
+            T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
+
+            T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender,'CAD')
+
+            pose_file = self.path_to_glace / split / 'poses' / f'{name}.txt'
+            np.savetxt(pose_file, T_cad_cam, fmt='%15.7e')
+
+
+            # IMAGE
+            image = cv.imread(self.path_to_renders / 'images' / f'{name}.png')
+
+            img_aspect = image.shape[0] / image.shape[1]
+            if img_aspect > 1:
+                img_w = self.target_height
+                img_h = int(np.ceil(self.target_height * img_aspect))
+            else:
+                img_w = int(np.ceil(self.target_height / img_aspect))
+                img_h = self.target_height
             
+            image = cv.resize(image, (img_w, img_h))
+            cv.imwrite(self.path_to_glace / split / 'rgb' / f'{name}.png', image)
+
+            out_w = int(np.ceil(img_w / nn_subsampling))
+            out_h = int(np.ceil(img_h / nn_subsampling))
+
+            out_scale = out_w / image.shape[1]
+            img_scale = img_w / image.shape[1]
+
+
+            # INTRINSICS
+            file = self.path_to_renders / 'intrinsics' / f'{name}.txt'
+
+            w, h, f, f_unit, _, _ = file.read_text().strip().split()
+            w, h, f = int(w), int(h), float(f)
+
+            if f_unit == 'MM':
+                # convert focal length from mm to pixels
+                focal_length = f * max(w, h) / 36
+                focal_length *= img_scale
+            else:
+                raise NotImplementedError(f"Unit {f_unit} not implemented")
+
+            intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
+            np.savetxt(intrinsics_file, np.array([focal_length]), fmt='%15.7e')
+
+
+            # DEPTH MAPS
+            depth_map = ModelConversion.convert_depth_map_from_exr_to_numpy(self.path_to_renders / 'depth/', name)
+
+            # resize depth map & subsample by using nearest neighbor
+            depth_map_subsampled = np.zeros((out_h, out_w))
+
+            # print(f"Resizing from {depth_map.shape} to {depth_map_subsampled.shape}")
+            scale_y = out_h / depth_map.shape[0]
+            scale_x = out_w / depth_map.shape[1]
+
+            for y in range(out_h):
+                for x in range(out_w):
+                    x_ = int( (x+1) / scale_x) -1
+                    y_ = int( (y+1) / scale_y) -1
+
+                    depth_map_subsampled[y, x] = depth_map[y_, x_]
+
+            # print(f'({x}, {y}) <- ({x_}, {y_})')
             
-                
+
+            depth_cad = depth_map_subsampled
+            assert depth_cad.shape == (out_h, out_w), depth_cad.shape
+
+            if to_mm:
+                depth_map_subsampled *= 1000
+
+            depth_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
+            np.save(depth_file, depth_map_subsampled)
 
 
-    # def convert_scene_coordinates(self):
-    #     """
-    #     Convert scene coordinates from 
-    #     """
+            # SCENE COORDINATES
+            cx = img_w / 2
+            cy = img_h / 2
 
-    #     # INPUT: path_to_renders/scene_coordinates/*.npz
-    #     # npz: dict['scene_coordinates'] = scene_coordinates ndarray (w x h x 3)
-    #     # w, h = image width, height
+            x, y = np.meshgrid(np.arange(depth_map_subsampled.shape[1]), np.arange(depth_map_subsampled.shape[0]))
+            x = (x - cx) * depth_cad / focal_length
+            y = (y - cy) * depth_cad / focal_length
+            z = depth_cad
 
-    #     # OUTPUT: train/init/* torch tensors (3 x H x W)
-    #     # H, W = SCR output dimension = 640 x 480 (480 fixed, width based on aspect ratio)
-    #     # invalid set to zero
+            ones = np.ones_like(z)
+            ones = np.where(z == 0, 0, ones)
 
-    #     pass
+            coords_cam = np.stack([x, y, z, ones], axis=-1)
+            coords_cam = coords_cam.reshape(-1, 4)
+            
+            coords_cad = coords_cam @ T_cad_cam.T
+            coords_cad = coords_cad[:, :3]
+            coords_cad = coords_cad.reshape(depth_map_subsampled.shape[0], depth_map_subsampled.shape[1], 3)
+            assert coords_cad.shape == depth_map_subsampled.shape + (3,), coords_cad.shape
+
+            coords_cad = torch.tensor(coords_cad).float().permute(2, 0, 1)
+
+            assert coords_cad.size() == (3, out_h, out_w), coords_cad.size()
+
+            coords_file = self.path_to_glace / split / 'init' / f'{name}.dat'
+            torch.save(coords_cad, coords_file)
 
 
 if __name__ == '__main__':
@@ -530,20 +645,29 @@ if __name__ == '__main__':
     path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
     # path_to_data = Path('/home/johndoe/Documents/data/')
 
-    # Pantheon
 
+
+    # Pantheon
 
     path_to_colmap_model = path_to_data / '3D Models/Pantheon/Reference/dense/sparse'
 
+    # GlaceConversion(
+    #     source='SFM',
+    #     path_to_colmap_model=path_to_colmap_model,
+    #     path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/pantheon (SFM)'),
+    #     T_sfm_cad=T_pantheon,
+    #     num_test=100,
+    #     depth_maps=True,
+    #     scene_coordinates=True,
+    #     path_to_nvm=path_to_colmap_model,
+    # )
+
     GlaceConversion(
-        source='SFM',
-        path_to_colmap_model=path_to_colmap_model,
-        path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/pantheon (SFM)'),
-        T_sfm_cad=T_pantheon,
-        num_test=100,
+        source='renders',
+        path_to_glace=path_to_data / 'GLACE/pantheon (renders)',
+        path_to_renders=path_to_data / 'Evaluation/pantheon B/ground truth/renders',
         depth_maps=True,
         scene_coordinates=True,
-        path_to_nvm=path_to_colmap_model,
     )
 
 
