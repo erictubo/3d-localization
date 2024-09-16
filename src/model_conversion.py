@@ -94,16 +94,16 @@ class ModelConversion:
             depth_prefix: str = 'depth/',
             scene_coordinates_prefix: str = 'scene_coordinates/',
             ):
-        
-        assert path_to_ground_truth or T_sfm_cad, 'Either path_to_ground_truth or T_sfm_cad should be provided.'
-        
-        if path_to_ground_truth:
+                
+        if path_to_ground_truth is not None:
             self.path_to_ground_truth = path_to_ground_truth
             self.T_sfm_cad, self.s_sfm_cad = self.read_registration_data(path_to_ground_truth / 'T_sfm_cad.txt')
-        elif T_sfm_cad:
+        elif T_sfm_cad is not None:
             assert T_sfm_cad.shape == (4,4), T_sfm_cad.shape
             self.T_sfm_cad = T_sfm_cad
             self.s_sfm_cad = decompose_matrix(T_sfm_cad)[0]
+        else:
+            raise ValueError('Either path_to_ground_truth or T_sfm_cad should be provided.')
 
         self.T_cad_sfm = np.linalg.inv(self.T_sfm_cad)
         self.s_cad_sfm = 1/self.s_sfm_cad
