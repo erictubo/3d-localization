@@ -18,11 +18,14 @@ if __name__ == "__main__":
     # model_names = ['Reichstag']
     # cad_model_ids = ['A', 'B']
 
-    model_names = ['Notre Dame']
-    cad_model_ids = ['B']
+    # model_names = ['Notre Dame']
+    # cad_model_ids = ['B']
 
     # model_names = ['St Peters Square']
     # cad_model_ids = ['B']
+
+    model_names = ['Pantheon']
+    cad_model_ids = ['B']
 
     # Limit for GT rendering
     limit = 4000
@@ -63,22 +66,8 @@ if __name__ == "__main__":
                 file_name='cam_sfm_poses.txt'
             )
 
-            # 1.3. Convert database intrinsics & poses from CAD to COLMAP format (input)
-            cad_to_colmap = ModelConversion(cad_model.path_to_ground_truth, cad_model.path_to_database)
 
-            print('   Converting intrinsics and poses to COLMAP format ...')
-            cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
-
-            if input("Convert depth maps & scene coordinates?") == 'y':
-
-                print('   Converting depth maps to NPZ ...')
-                cad_to_colmap.convert_depth_maps_from_exr_to_npz(format=format_depth)
-
-                print('   Creating scene coordinate maps ...')
-                cad_to_colmap.convert_depth_to_scene_coordinate_maps(format=format_depth)
-
-
-            # 1.4. Convert ground truth query poses from COLMAP to CAD format for rendering
+            # 1.3. Convert ground truth query poses from COLMAP to CAD format for rendering
             ground_truth_poses_cam_sfm = ColmapModelWriter.read_poses_text_file(cad_model.path_to_ground_truth, 'cam_sfm_poses.txt', quaternion_first=False)
 
             colmap_to_cad = ModelConversion(cad_model.path_to_ground_truth)
@@ -93,7 +82,7 @@ if __name__ == "__main__":
             )
 
 
-            # 1.5. Render & overlay ground truth query poses
+            # 1.4. Render & overlay ground truth query poses
             if input("Render ground truth query poses? (y/n): ") == 'y':
 
                 render_query(
@@ -111,7 +100,29 @@ if __name__ == "__main__":
                         cad_model.path_to_ground_truth / 'renders/images/',
                         cad_model.path_to_ground_truth / 'overlays/',
                         )
+                
+                # same with subsampling to 8 pix
+                Visualization.overlay_query_and_rendered_images(
+                        cad_model.path_to_query_images,
+                        cad_model.path_to_ground_truth / 'renders/images/',
+                        cad_model.path_to_ground_truth / 'overlays/subsampled/',
+                        subsample=8
+                        )
 
+
+            # 1.5. Convert database intrinsics & poses from CAD to COLMAP format (input)
+            cad_to_colmap = ModelConversion(cad_model.path_to_ground_truth, cad_model.path_to_database)
+
+            print('   Converting intrinsics and poses to COLMAP format ...')
+            cad_to_colmap.convert_render_intrinsics_and_poses_to_colmap_format(from_blender_format=True)
+
+            if input("Convert depth maps & scene coordinates?") == 'y':
+
+                print('   Converting depth maps to NPZ ...')
+                cad_to_colmap.convert_depth_maps_from_exr_to_npz(format=format_depth)
+
+                print('   Creating scene coordinate maps ...')
+                cad_to_colmap.convert_depth_to_scene_coordinate_maps(format=format_depth)
 
 
 
