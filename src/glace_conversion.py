@@ -3,16 +3,10 @@ from typing import List
 import numpy as np
 import cv2 as cv
 import torch
-from transformations import compose_matrix, decompose_matrix
 
 from colmap_model import ColmapModelReader
 from model_conversion import *
 
-
-
-# IDEA: integrate with setup_sfm_dataset.py
-# to generate depth maps and scene coordinates
-# from reconstructed SFM data in addition to renders
 
 class GlaceConversion:
     """
@@ -31,8 +25,9 @@ class GlaceConversion:
             T_sfm_cad: np.ndarray = None,
             num_test: int = 0,
             depth_maps: bool = False,
-            # scene_coordinates: bool = False,
+            scene_coordinates: bool = False,
             path_to_nvm: Path = None,
+            target_height: int = 480,
         ):
 
         self.path_to_glace = path_to_glace
@@ -41,6 +36,8 @@ class GlaceConversion:
             if not path.exists(): path.mkdir()
 
         self.num_test = num_test
+
+        self.target_height = target_height
 
         if source.lower() == 'renders':
             assert path_to_renders, "Missing input: path_to_renders"
@@ -56,7 +53,6 @@ class GlaceConversion:
 
             if depth_maps:
                 self._convert_rendered_depth_maps(names)
-
 
             # if scene_coordinates:
             #     # generate scene coordinates in GLACE format from depth maps
@@ -87,14 +83,13 @@ class GlaceConversion:
 
             self.colmap_model = ColmapModelReader(self.path_to_colmap_model)
 
-            self._copy_sfm_images(sfm_names)
-            self._convert_sfm_intrinsics(sfm_names)
-            self._convert_sfm_poses(sfm_names)
+            # self._copy_sfm_images(sfm_names)
+            # self._convert_sfm_intrinsics(sfm_names)
+            # self._convert_sfm_poses(sfm_names)
 
-            if depth_maps:
-                assert path_to_nvm, "Missing input: path_to_nvm"
-                self.path_to_nvm = path_to_nvm
-                self._generate_from_nvm(sfm_names, output='depth')
+            assert path_to_nvm, "Missing input: path_to_nvm"
+            self.path_to_nvm = path_to_nvm
+            self._generate_from_nvm(sfm_names, depth_maps, scene_coordinates)
 
         else:
             raise(ValueError, 'Specify a source: renders or sfm')
@@ -289,16 +284,29 @@ class GlaceConversion:
         print("Rendered depth maps converted successfully")
 
     
-    def _generate_from_nvm(self, names: List[str], output='depth', to_mm = True, nn_subsampling = 8):
+    def _generate_from_nvm(
+            self,
+            names: List[str],
+            depth_maps: bool,
+            scene_coordinates: bool,
+            to_mm = True,
+            nn_subsampling = 8,
+        ):
         """
         Generate depth maps from NVM file
         """
 
-        assert output in ['depth', 'scene_coordinates'], "Invalid output type"
-
         for split in ['train', 'test']:
             path = self.path_to_glace / split / 'depth'
             if not path.exists(): path.mkdir()
+
+            subpaths = ['rgb', 'calibration', 'poses', 'init']
+            if depth_maps: subpaths.append('depth')
+            if scene_coordinates: subpaths.append('init')
+
+            for subpath in subpaths:
+                path = self.path_to_glace / split / subpath
+                if not path.exists(): path.mkdir()
 
         print("Loading SfM reconstruction...")
 
@@ -328,14 +336,16 @@ class GlaceConversion:
                 pts_dict[cam_view].append(pt_3D)
 
             pt += 1
-        
+
         print("Reconstruction contains %d cameras and %d 3D points." % (num_cams, num_pts))
 
-        if output == 'scene coordinates':
-            conversion = ModelConversion(T_sfm_cad=self.T_sfm_cad)
+        conversion = ModelConversion(T_sfm_cad=self.T_sfm_cad)
 
-            T_sfm_cad = torch.tensor(T_sfm_cad).float()
-            T_cad_sfm = torch.tensor(T_cad_sfm).float()
+        T_sfm_cad = self.T_sfm_cad
+        T_cad_sfm = np.linalg.inv(T_sfm_cad)
+
+        T_sfm_cad = torch.tensor(T_sfm_cad).float()
+        T_cad_sfm = torch.tensor(T_cad_sfm).float()
 
 
         for cam_idx in range(num_cams):
@@ -369,19 +379,49 @@ class GlaceConversion:
             T_cam_sfm = np.linalg.inv(T_sfm_cam)
 
 
+            # POSE
+            T_cad_cam = conversion.transform_pose_from_colmap_to_cad_format(T_cam_sfm, to_blender_format=False)
+            pose_cad_cam = convert_matrix_to_pose(T_cad_cam)
+
+            # np.savetxt(split + '/poses/' + image_file[:-3] + 'txt', T_cad_cam, fmt='%15.7e')
+            pose_file = self.path_to_glace / split / 'poses' / f'{name}.txt'
+            np.savetxt(pose_file, T_cad_cam, fmt='%15.7e')
+
+
             T_cam_sfm = torch.tensor(T_cam_sfm).float()
             T_sfm_cam = torch.tensor(T_sfm_cam).float()
 
 
-            # Get image dimensions
+            # IMAGE
             image = cv.imread(self.path_to_images / image_file)
-            img_h, img_w = image.shape[0], image.shape[1]
+
+            img_aspect = image.shape[0] / image.shape[1]
+
+            if img_aspect > 1:
+                img_w = self.target_height
+                img_h = int(np.ceil(self.target_height * img_aspect))
+            else:
+                img_w = int(np.ceil(self.target_height / img_aspect))
+                img_h = self.target_height
 
             out_w = int(np.ceil(img_w / nn_subsampling))
             out_h = int(np.ceil(img_h / nn_subsampling))
 
             out_scale = out_w / image.shape[1]
             img_scale = img_w / image.shape[1]
+
+            image = cv.resize(image, (img_w, img_h))
+            
+            #cv.imwrite(split + '/rgb/' + image_file, image)
+            cv.imwrite(self.path_to_glace / split / 'rgb' / f'{name}.png', image)
+
+
+            # INTRINSICS
+            # with open(split + '/calibration/' + image_file[:-3] + 'txt', 'w') as f:
+            #     f.write(str(focal_length * img_scale))
+            intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
+            np.savetxt(intrinsics_file, np.array([focal_length * img_scale]), fmt='%15.7e')
+
 
             # SCENE COORDINATES
 
@@ -390,9 +430,6 @@ class GlaceConversion:
 
             coords_sfm = torch.zeros((3, out_h, out_w))
             depth_sfm = torch.zeros((out_h, out_w))
-
-            fine = 0
-            conflict = 0
 
             for pt_idx in range(0, pts_3D.size(0)):
 
@@ -419,23 +456,22 @@ class GlaceConversion:
                     depth_sfm[y, x] = cam_pt[2, 0]
                     coords_sfm[:, y, x] = pts_3D[pt_idx, 0:3]
 
-            if output == 'depth':
+            if depth_maps:
                 depth_cad = depth_sfm * self.scale
                 
                 depth_map = depth_cad.numpy()
 
                 if to_mm:
                     depth_map *= 1000
-                output_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
-                np.save(output_file, depth_map)
+                
+                depth_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
+                np.save(depth_file, depth_map)
             
-            elif output == 'scene_coordinates':
+            if scene_coordinates:
                 valid_mask = coords_sfm.sum(dim=0) != 0
 
                 valid_points = coords_sfm[:, valid_mask]
                 valid_points_homogeneous = torch.cat([valid_points, torch.ones(1, valid_points.size(1))], dim=0)
-
-                print(valid_points_homogeneous.shape)
 
                 transformed_points = torch.mm(T_cad_sfm, valid_points_homogeneous)
                 transformed_points = transformed_points[0:3, :]
@@ -443,9 +479,8 @@ class GlaceConversion:
                 coords_cad = torch.zeros((3, out_h, out_w))
                 coords_cad[:, valid_mask] = transformed_points
 
-                output_file = self.path_to_glace / split / 'init' / f'{name}.dat'
-
-                torch.save(coords_cad, output_file)
+                coords_file = self.path_to_glace / split / 'init' / f'{name}.dat'
+                torch.save(coords_cad, coords_file)
 
 
             
@@ -485,10 +520,34 @@ if __name__ == '__main__':
         [0, 0, 0, 1]
     ])
 
-    # path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
-    path_to_data = Path('/home/johndoe/Documents/data/')
+    T_pantheon = np.array([
+        [-0.1956, 0.005829, -0.0004737, -0.05305],
+        [-0.001383, -0.06151, -0.1857, 5.694],
+        [-0.005682, -0.1856, 0.06152, 13.51],
+        [0, 0, 0, 1]
+    ])
+
+    path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
+    # path_to_data = Path('/home/johndoe/Documents/data/')
+
+    # Pantheon
 
 
+    path_to_colmap_model = path_to_data / '3D Models/Pantheon/Reference/dense/sparse'
+
+    GlaceConversion(
+        source='SFM',
+        path_to_colmap_model=path_to_colmap_model,
+        path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/pantheon (SFM)'),
+        T_sfm_cad=T_pantheon,
+        num_test=100,
+        depth_maps=True,
+        scene_coordinates=True,
+        path_to_nvm=path_to_colmap_model,
+    )
+
+
+    # Notre Dame B
 
     # GlaceConversion(
     #     source='renders',
@@ -503,17 +562,17 @@ if __name__ == '__main__':
     #     num_test=100,
     # )
 
-    path_to_colmap_model = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/3D Models/Notre Dame/Reference/dense/sparse')
-    # - SFM
-    GlaceConversion(
-        source='SFM',
-        path_to_colmap_model= path_to_colmap_model,
-        path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)'),
-        T_sfm_cad=T_notre_dame,
-        num_test=0,
-        depth_maps=True,
-        path_to_nvm=path_to_colmap_model,
-    )
+    # path_to_colmap_model = path_to_data / '3D Models/Notre Dame/Reference/dense/sparse'
+    # # - SFM
+    # GlaceConversion(
+    #     source='SFM',
+    #     path_to_colmap_model= path_to_colmap_model,
+    #     path_to_glace=Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/GLACE/notre dame (SFM)'),
+    #     T_sfm_cad=T_notre_dame,
+    #     num_test=0,
+    #     depth_maps=True,
+    #     path_to_nvm=path_to_colmap_model,
+    # )
 
 
     # St Peters Square B
