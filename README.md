@@ -34,7 +34,10 @@ pip install torch=2.2.2 torchvision==0.17.1
 
 ### Device-specific directories
 
+blender_path in tasks.json and interface_blender.py
 
+- macOS: "/Applications/Blender.app/Contents/MacOS/Blender"
+- Linux: "/snap/bin/blender"
 
 
 
@@ -147,6 +150,7 @@ Reading data based on sorted sequence, not by looking up filenames
     - "
 - output
     - <scene>.pt
+
 
 ## C. Post-Processing
 
