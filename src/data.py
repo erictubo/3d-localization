@@ -2,11 +2,11 @@ import os
 
 from pathlib import Path
 
+path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
 
-path_to_models = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/3D Models/')
-path_to_evaluation = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Evaluation/')
-
-path_to_renders = Path('/Users/eric/Library/Mobile Documents/com~apple~CloudDocs/Blender/renders/')
+path_to_models = path_to_data / '3D Models/'
+path_to_evaluation = path_to_data / 'Evaluation/'
+path_to_renders = path_to_data / 'Renders/'
 
 
 class Model:
