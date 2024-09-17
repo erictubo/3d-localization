@@ -342,8 +342,8 @@ class GlaceConversion:
 
                 for y in range(out_h):
                     for x in range(out_w):
-                        x_ = int( (x+0.5) / scale_x - 0.5)
-                        y_ = int( (y+0.5) / scale_y - 0.5)
+                        x_ = int( (x+0.5) / scale_x)
+                        y_ = int( (y+0.5) / scale_y)
 
                         depth_map_subsampled[y, x] = depth_map[y_, x_]
 
