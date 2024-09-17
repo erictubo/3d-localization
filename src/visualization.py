@@ -258,76 +258,12 @@ class Visualization:
             plt.savefig(path_to_output / f'{name}_coordinates.png', transparent=True)
         plt.close()
 
-    
-    def compare_scene_coordinate_maps(
-            path_to_scene_coordinates_1: Path,
-            path_to_scene_coordinates_2: Path,
-            path_to_output: Path = None,
-        ):
-        """
-        Visualize the pixel-wise difference between two scene coordinate maps.
-        Difference = distance between the two points in 3D space
-        """
-        
-        def load_coordinates(path_to_scene_coordinates: Path):
-            format = path_to_scene_coordinates.suffix[1:]
-            if format == 'dat':
-                import torch
-                coordinates = torch.load(path_to_scene_coordinates)
-                # Torch tensor (3, H, W) -> numpy array (H, W, 3)
-                coordinates = coordinates.permute(1, 2, 0).numpy()
-            else:
-                coordinates = np.load(path_to_scene_coordinates)['scene_coordinates']
-            mask = np.all(coordinates == [0., 0., 0.], axis=-1)
-            return coordinates, mask
-        
-        coordinates_1, mask_1 = load_coordinates(path_to_scene_coordinates_1)
-        coordinates_2, mask_2 = load_coordinates(path_to_scene_coordinates_2)
 
-        # combine the masks: multiply
-        mask = mask_1 | mask_2
-
-        # Calculate the difference
-        difference = np.linalg.norm(coordinates_1 - coordinates_2, axis=-1)
-        masked_difference = np.ma.masked_array(difference, mask=mask)
-
-        print(difference.shape)
-
-        cmap = plt.get_cmap('viridis')
-        cmap.set_bad(color='white')
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-
-        # Create a color-coded image of the depth map
-        im = ax.imshow(masked_difference, cmap=cmap)
-
-        # Reverse the y-axis
-        # ax.invert_yaxis()
-        
-        # Add a colorbar
-        cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label('Distance', rotation=270, labelpad=15)
-        
-        # ax.set_title('Depth Map Visualization')
-
-        # ax.set_xlabel('X')
-        # ax.set_ylabel('Y')
-        # ax.axis('off')
-
-        ax.set_xticks([])
-        ax.set_yticks([])
-        
-        if not path_to_output:
-            plt.show()
-        else:
-            plt.savefig(path_to_output / f'{name}.png', transparent=True)
-        plt.close()
-
-    
     def compare_depth_maps(
             path_to_depth_1: Path,
             path_to_depth_2: Path,
             path_to_output: Path = None,
+            mm_to_m: bool = False,
     ):
         """
         Visualize the pixel-wise difference between two depth maps.
@@ -346,13 +282,33 @@ class Visualization:
         depth_map_1, mask_1 = load_depth_map(path_to_depth_1)
         depth_map_2, mask_2 = load_depth_map(path_to_depth_2)
 
+        # if the two depth maps have different sizes, resize the smaller one to the size of the larger one
+        # by repeating the values
+        if depth_map_1.shape != depth_map_2.shape:
+            if depth_map_1.shape[0] > depth_map_2.shape[0]:
+                assert depth_map_1.shape[1] > depth_map_2.shape[1], 'Depth maps have incompatible sizes'
+                depth_map_2 = np.repeat(depth_map_2, depth_map_1.shape[0] // depth_map_2.shape[0], axis=0)
+                depth_map_2 = np.repeat(depth_map_2, depth_map_1.shape[1] // depth_map_2.shape[1], axis=1)
+                mask_2 = depth_map_2 == 0.
+            else:
+                assert depth_map_2.shape[1] > depth_map_1.shape[1], 'Depth maps have incompatible sizes'
+                depth_map_1 = np.repeat(depth_map_1, depth_map_2.shape[0] // depth_map_1.shape[0], axis=0)
+                depth_map_1 = np.repeat(depth_map_1, depth_map_2.shape[1] // depth_map_1.shape[1], axis=1)
+                mask_1 = depth_map_1 == 0.
+            
+            assert depth_map_1.shape == depth_map_2.shape, 'Depth maps have different sizes after resizing'
+
         mask = mask_1 | mask_2
 
         # Calculate the difference
         difference = np.abs(depth_map_1 - depth_map_2)
         masked_difference = np.ma.masked_array(difference, mask=mask)
 
-        cmap = plt.get_cmap('viridis')
+        if mm_to_m:
+            masked_difference = masked_difference / 1000
+
+        # use a color map where low values are green and high values are red
+        cmap = plt.get_cmap('Spectral').reversed()
         cmap.set_bad(color='white')
         
         fig, ax = plt.subplots(figsize=(10, 8))
@@ -381,7 +337,73 @@ class Visualization:
         else:
             plt.savefig(path_to_output / f'{name}.png', transparent=True)
         plt.close()
+
+
+    # def compare_scene_coordinate_maps(
+    #         path_to_scene_coordinates_1: Path,
+    #         path_to_scene_coordinates_2: Path,
+    #         path_to_output: Path = None,
+    #         mm_to_m: bool = False,
+    #     ):
+    #     """
+    #     Visualize the pixel-wise difference between two scene coordinate maps.
+    #     Difference = distance between the two points in 3D space
+    #     """
         
+    #     def load_coordinates(path_to_scene_coordinates: Path):
+    #         format = path_to_scene_coordinates.suffix[1:]
+    #         if format == 'dat':
+    #             import torch
+    #             coordinates = torch.load(path_to_scene_coordinates)
+    #             # Torch tensor (3, H, W) -> numpy array (H, W, 3)
+    #             coordinates = coordinates.permute(1, 2, 0).numpy()
+    #         else:
+    #             coordinates = np.load(path_to_scene_coordinates)['scene_coordinates']
+    #         mask = np.all(coordinates == [0., 0., 0.], axis=-1)
+    #         return coordinates, mask
+        
+    #     coordinates_1, mask_1 = load_coordinates(path_to_scene_coordinates_1)
+    #     coordinates_2, mask_2 = load_coordinates(path_to_scene_coordinates_2)
+
+    #     # combine the masks: multiply
+    #     mask = mask_1 | mask_2
+
+    #     # Calculate the difference
+    #     difference = np.linalg.norm(coordinates_1 - coordinates_2, axis=-1)
+    #     masked_difference = np.ma.masked_array(difference, mask=mask)
+
+    #     if mm_to_m:
+    #         masked_difference = masked_difference / 1000
+
+    #     cmap = plt.get_cmap('Spectral').reversed()
+    #     cmap.set_bad(color='white')
+        
+    #     fig, ax = plt.subplots(figsize=(10, 8))
+
+    #     # Create a color-coded image of the depth map
+    #     im = ax.imshow(masked_difference, cmap=cmap)
+
+    #     # Reverse the y-axis
+    #     # ax.invert_yaxis()
+        
+    #     # Add a colorbar
+    #     cbar = fig.colorbar(im, ax=ax)
+    #     cbar.set_label('Distance', rotation=270, labelpad=15)
+        
+    #     # ax.set_title('Depth Map Visualization')
+
+    #     # ax.set_xlabel('X')
+    #     # ax.set_ylabel('Y')
+    #     # ax.axis('off')
+
+    #     ax.set_xticks([])
+    #     ax.set_yticks([])
+        
+    #     if not path_to_output:
+    #         plt.show()
+    #     else:
+    #         plt.savefig(path_to_output / f'{name}.png', transparent=True)
+    #     plt.close()
 
 
 
@@ -409,28 +431,6 @@ if __name__ == '__main__':
 
 
 
-    path_to_scene_coordinates = path_to_data / 'GLACE/pantheon (renders)/test/init/'
-    path_to_depth = path_to_data / 'GLACE/pantheon (renders)/test/depth/'
-    format = 'dat'
-
-    names = ['query_00318896_2265892479']
-
-    for name in names:
-        Visualization.visualize_depth_map(
-            path_to_depth=path_to_depth,
-            name=name,
-            extension='npy',
-        )
-        # Visualization.visualize_scene_coordinate_map(
-        #     path_to_scene_coordinates,
-        #     name,
-        #     format=format,
-        #     # path_to_output=path_to_scene_coordinates,
-        #     # x_range=(-120, 100),
-        #     # y_range=(-80, 80),
-        #     # z_range=(-20, 120),
-        # )
-
     path_to_scene_coordinates = path_to_data / 'GLACE/pantheon (SFM)/test/init/'
     path_to_depth = path_to_data / 'GLACE/pantheon (SFM)/test/depth/'
     format = 'dat'
@@ -453,37 +453,18 @@ if __name__ == '__main__':
         #     # z_range=(-20, 120),
         # )
 
-    # Visualization.visualize_scene_coordinate_difference(
-    #     path_to_scene_coordinates_1=path_to_data / 'GLACE/pantheon (renders)/test/init/query_00318896_2265892479.dat',
-    #     path_to_scene_coordinates_2=path_to_data / 'GLACE/pantheon (SFM)/test/init/00318896_2265892479.dat',
-    # )
+    path_to_depth = path_to_data / 'GLACE/pantheon (renders)/test/depth/'
 
+    for name in names:
+        name = 'query_' + name
+
+        Visualization.visualize_depth_map(
+            path_to_depth=path_to_depth,
+            name=name,
+            extension='npy',
+        )
     Visualization.compare_depth_maps(
         path_to_depth_1=path_to_data / 'GLACE/pantheon (renders)/test/depth/query_00318896_2265892479.npy',
         path_to_depth_2=path_to_data / 'GLACE/pantheon (SFM)/test/depth/00318896_2265892479.npy',
+        mm_to_m=True,
     )
-
-
-
-    # path_to_scene_coordinates = path_to_data / 'GLACE/notre dame (SFM)/train/init/'
-    # path_to_depth = path_to_data / 'GLACE/notre dame (SFM)/train/depth/'
-    # format = 'dat'
-
-    # # names = ['49379137_4824496602', '49452387_8136855930', '49610648_2419143510']
-
-    # names = ['99953487_537736817', '99959942_5064636197', '99980504_3809078952']
-
-    # for name in names:
-    #     Visualization.visualize_depth_map(
-    #         path_to_depth=path_to_depth,
-    #         name=name,
-    #         extension='npy',
-    #     )
-        # Visualization.visualize_scene_coordinate_map(
-        #     path_to_scene_coordinates,
-        #     name, format=format,
-        #     path_to_output=path_to_scene_coordinates,
-        #     # x_range=(-120, 100),
-        #     # y_range=(-80, 80),
-        #     # z_range=(-20, 120),
-        # )
