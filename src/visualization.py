@@ -134,7 +134,10 @@ class Visualization:
             path_to_depth: Path,
             name: str,
             path_to_output: Path = None,
+            output_name: str = None,
             extension: str = 'npz',
+            mm_to_m: bool = False,
+            depth_range: Tuple[int, int] = None,
         ):
         """
         Visualize npy/npz depth map with colors according to depth values and a legend.
@@ -156,11 +159,22 @@ class Visualization:
         
         # Create a masked array, masking zero values
         masked_depth_map = np.ma.masked_where(depth_map == 0, depth_map)
+
+        if mm_to_m:
+            masked_depth_map = masked_depth_map / 1000
         
         fig, ax = plt.subplots(figsize=(10, 8))
 
-        # Create a color-coded image of the depth map
-        im = ax.imshow(masked_depth_map, cmap=cmap)
+        # Set the range of the color map
+        if depth_range:
+            assert depth_range[0] >= 0 and depth_range[1] > depth_range[0], 'Invalid depth range'
+            # check that the depth map values are within the specified range
+            assert masked_depth_map.min() >= depth_range[0] and masked_depth_map.max() <= depth_range[1], \
+                f'Depth map values {np.floor(masked_depth_map.min())} and {np.ceil(masked_depth_map.max())} are not within the specified range'
+            im = ax.imshow(masked_depth_map, cmap=cmap, vmin=depth_range[0], vmax=depth_range[1])
+        else:
+            # Create a color-coded image of the depth map
+            im = ax.imshow(masked_depth_map, cmap=cmap)
 
         # Reverse the y-axis
         # ax.invert_yaxis()
@@ -181,7 +195,9 @@ class Visualization:
         if not path_to_output:
             plt.show()
         else:
-            plt.savefig(path_to_output / f'{name}.png', transparent=True)
+            if not output_name:
+                output_name = f'{name}_depth'
+            plt.savefig(path_to_output / f'{output_name}.png', transparent=True)
         plt.close()
 
     @staticmethod
@@ -189,10 +205,12 @@ class Visualization:
             path_to_scene_coordinates: Path,
             name: str,
             path_to_output: Path = None,
+            output_name: str = None,
             format: str = 'npz',
             x_range: Tuple[int, int] = None, # (min, max) for color of X coordinate
             y_range: Tuple[int, int] = None, # (min, max) for color of Y coordinate
             z_range: Tuple[int, int] = None, # (min, max) for color of Z coordinate
+            ignore_limit: float = 0.05,
         ):
         """
         Visualize scene coordinates.
@@ -219,13 +237,33 @@ class Visualization:
         min_coords = np.floor(masked_coordinates.min(axis=(0, 1)))
         max_coords = np.ceil(masked_coordinates.max(axis=(0, 1)))
 
+        # print(f'Min coordinates: {min_coords}')
+        # print(f'Max coordinates: {max_coords}')
+
         if (x_range and y_range and z_range):
 
             min_coords_limit = np.array([x_range[0], y_range[0], z_range[0]])
             max_coords_limit = np.array([x_range[1], y_range[1], z_range[1]])
 
-            assert (min_coords >= min_coords_limit).all() and (max_coords <= max_coords_limit).all(), \
-                f'min_coords {min_coords} and max_coords {max_coords} are not within the specified ranges'
+
+            # calculate the quantity of any coordinates outside the specified ranges (any dimension)
+            num_coords_outside = np.sum(
+                np.any((masked_coordinates < min_coords_limit) | (masked_coordinates > max_coords_limit), axis=-1)
+            )
+
+            print(f'Number of coordinates outside the specified ranges: {num_coords_outside}')
+
+            # if less than 5% of the coordinates are outside the specified ranges, use the specified ranges
+            # remove the coordinates outside the specified ranges
+            if num_coords_outside < ignore_limit * masked_coordinates.size:
+                masked_coordinates = np.clip(masked_coordinates, min_coords_limit, max_coords_limit)
+            else:
+                raise ValueError(f'Percentage of coordinates outside the specified ranges {num_coords_outside / masked_coordinates.size} is greater than the limit {ignore_limit}')
+
+
+            # assert (min_coords >= min_coords_limit).all() and (max_coords <= max_coords_limit).all(), \
+            #     f'min_coords {min_coords} and max_coords {max_coords} are not within the specified ranges'
+
 
             # Normalize the coordinates such that [min, max] -> [0, 1]
             normalized_coordinates = (masked_coordinates - min_coords_limit) / (max_coords_limit - min_coords_limit)
@@ -255,13 +293,16 @@ class Visualization:
         if not path_to_output:
             plt.show()
         else:
-            plt.savefig(path_to_output / f'{name}_coordinates.png', transparent=True)
+            if not output_name:
+                output_name = f'{name}_coordinates'
+            plt.savefig(path_to_output / f'{output_name}.png', transparent=True)
         plt.close()
 
 
     def compare_depth_maps(
             path_to_depth_1: Path,
             path_to_depth_2: Path,
+            name: str,
             path_to_output: Path = None,
             mm_to_m: bool = False,
     ):
@@ -284,19 +325,50 @@ class Visualization:
 
         # if the two depth maps have different sizes, resize the smaller one to the size of the larger one
         # by repeating the values
+        
         if depth_map_1.shape != depth_map_2.shape:
-            if depth_map_1.shape[0] > depth_map_2.shape[0]:
-                assert depth_map_1.shape[1] > depth_map_2.shape[1], 'Depth maps have incompatible sizes'
-                depth_map_2 = np.repeat(depth_map_2, depth_map_1.shape[0] // depth_map_2.shape[0], axis=0)
-                depth_map_2 = np.repeat(depth_map_2, depth_map_1.shape[1] // depth_map_2.shape[1], axis=1)
-                mask_2 = depth_map_2 == 0.
-            else:
-                assert depth_map_2.shape[1] > depth_map_1.shape[1], 'Depth maps have incompatible sizes'
-                depth_map_1 = np.repeat(depth_map_1, depth_map_2.shape[0] // depth_map_1.shape[0], axis=0)
-                depth_map_1 = np.repeat(depth_map_1, depth_map_2.shape[1] // depth_map_1.shape[1], axis=1)
-                mask_1 = depth_map_1 == 0.
             
-            assert depth_map_1.shape == depth_map_2.shape, 'Depth maps have different sizes after resizing'
+            large_depth_map, small_depth_map = (depth_map_1, depth_map_2) if depth_map_1.size > depth_map_2.size else (depth_map_2, depth_map_1)
+            large_mask, small_mask = (mask_1, mask_2) if depth_map_1.size > depth_map_2.size else (mask_2, mask_1)
+
+            scale_x = large_depth_map.shape[1] / small_depth_map.shape[1]
+            scale_y = large_depth_map.shape[0] / small_depth_map.shape[0]
+
+            resized_depth_map_new = np.zeros_like(large_depth_map)
+            resized_mask_new = np.zeros_like(large_mask)
+            
+            for y in range(resized_depth_map_new.shape[0]):
+                for x in range(resized_depth_map_new.shape[1]):
+                    
+                    x_ = int( (x+0.5) / scale_x)
+                    y_ = int( (y+0.5) / scale_y)
+
+                    resized_depth_map_new[y, x] = small_depth_map[y_, x_]
+                    resized_mask_new[y, x] = small_mask[y_, x_]
+
+            depth_map_1, mask_1 = (large_depth_map, large_mask)
+            depth_map_2, mask_2 = (resized_depth_map_new, resized_mask_new)
+
+
+            # Option 2: subsample the larger depth map
+
+            # resized_depth_map = np.zeros_like(small_depth_map)
+            # resized_mask = np.zeros_like(small_mask)
+
+            # for y in range(resized_depth_map.shape[0]):
+            #     for x in range(resized_depth_map.shape[1]):
+            #         x_ = int( (x+0.5) * scale_x - 0.5)
+            #         y_ = int( (y+0.5) * scale_y - 0.5)
+
+            #         resized_depth_map[y, x] = large_depth_map[y_, x_]
+            #         resized_mask[y, x] = large_mask[y_, x_]
+
+            # depth_map_1, mask_1 = (small_depth_map, small_mask)
+            # depth_map_2, mask_2 = (resized_depth_map, resized_mask)
+
+            
+            assert depth_map_1.shape == depth_map_2.shape, \
+                f'Depth maps {path_to_depth_1.name} and {path_to_depth_2.name} have different sizes after resizing: {depth_map_1.shape} and {depth_map_2.shape}'
 
         mask = mask_1 | mask_2
 
@@ -314,7 +386,7 @@ class Visualization:
         fig, ax = plt.subplots(figsize=(10, 8))
 
         # Create a color-coded image of the depth map
-        im = ax.imshow(masked_difference, cmap=cmap)
+        im = ax.imshow(masked_difference, cmap=cmap, vmin=0)
 
         # Reverse the y-axis
         # ax.invert_yaxis()
@@ -431,40 +503,70 @@ if __name__ == '__main__':
 
 
 
-    path_to_scene_coordinates = path_to_data / 'GLACE/pantheon (SFM)/test/init/'
-    path_to_depth = path_to_data / 'GLACE/pantheon (SFM)/test/depth/'
+    path_to_reconstructed_coords = path_to_data / 'GLACE/pantheon (SFM)/test/init/'
+    path_to_reconstructed_depth = path_to_data / 'GLACE/pantheon (SFM)/test/depth/'
+    path_to_rendered_depth = path_to_data / 'GLACE/pantheon (renders)/test/depth/'
     format = 'dat'
 
-    names = ['00318896_2265892479']
+    names = ['00318896_2265892479', '00488011_10505838106', '00617912_545466582', '00862207_425411470']
 
-    for name in names:
+    path_to_output = Path('/Users/eric/Downloads') # None
+
+    depth_range = (0, 240)
+
+    # Min coordinates: [-31.0 -28.0 3.0]
+    # Max coordinates: [111.0 85.0 46.0]
+    # Min coordinates: [-142.0 -109.0 2.0]
+    # Max coordinates: [43.0 73.0 42.0]
+    # Min coordinates: [-14.0 22.0 11.0]
+    # Max coordinates: [17.0 40.0 33.0]
+    # Min coordinates: [-40.0 10.0 2.0]
+    # Max coordinates: [18.0 41.0 33.0]
+
+    # COmbined: [-142.0 -109.0 2.0] [111.0 85.0 46.0]
+
+    coords_range = (-142, 111), (-109, 85), (2, 46)
+
+
+    for i, name in enumerate(names):
         Visualization.visualize_depth_map(
-            path_to_depth=path_to_depth,
+            path_to_depth=path_to_reconstructed_depth,
+            mm_to_m=True,
             name=name,
             extension='npy',
+            path_to_output=path_to_output,
+            output_name=f'{i+1}_depth_reconstructed',
+            depth_range=depth_range,
         )
-        # Visualization.visualize_scene_coordinate_map(
-        #     path_to_scene_coordinates,
-        #     name,
-        #     format=format,
-        #     # path_to_output=path_to_scene_coordinates,
-        #     # x_range=(-120, 100),
-        #     # y_range=(-80, 80),
-        #     # z_range=(-20, 120),
-        # )
-
-    path_to_depth = path_to_data / 'GLACE/pantheon (renders)/test/depth/'
-
-    for name in names:
-        name = 'query_' + name
+        Visualization.visualize_scene_coordinate_map(
+            path_to_scene_coordinates=path_to_reconstructed_coords,
+            name=name,
+            format=format,
+            path_to_output=path_to_output,
+            output_name=f'{i+1}_coordinates',
+            x_range=coords_range[0],
+            y_range=coords_range[1],
+            z_range=coords_range[2],
+            # x_range=(-120, 100),
+            # y_range=(-80, 80),
+            # z_range=(-20, 120),
+        )
 
         Visualization.visualize_depth_map(
-            path_to_depth=path_to_depth,
-            name=name,
+            path_to_depth=path_to_rendered_depth,
+            mm_to_m=True,
+            name=f'query_{name}',
             extension='npy',
+            path_to_output=path_to_output,
+            output_name=f'{i+1}_depth_rendered',
+            depth_range=depth_range,
         )
-    Visualization.compare_depth_maps(
-        path_to_depth_1=path_to_data / 'GLACE/pantheon (renders)/test/depth/query_00318896_2265892479.npy',
-        path_to_depth_2=path_to_data / 'GLACE/pantheon (SFM)/test/depth/00318896_2265892479.npy',
-        mm_to_m=True,
-    )
+
+        
+        Visualization.compare_depth_maps(
+                path_to_depth_1=path_to_reconstructed_depth / f'{name}.npy',
+                path_to_depth_2=path_to_rendered_depth / f'query_{name}.npy',
+                mm_to_m=True,
+                name=f'{i+1}_depth_comparison',
+                path_to_output=path_to_output,
+            )
