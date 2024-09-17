@@ -101,7 +101,7 @@ class ModelConversion:
         elif T_sfm_cad is not None:
             assert T_sfm_cad.shape == (4,4), T_sfm_cad.shape
             self.T_sfm_cad = T_sfm_cad
-            self.s_sfm_cad = decompose_matrix(T_sfm_cad)[0]
+            self.s_sfm_cad = np.average(decompose_matrix(T_sfm_cad)[0])
         else:
             raise ValueError('Either path_to_ground_truth or T_sfm_cad should be provided.')
 
