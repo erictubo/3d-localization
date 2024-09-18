@@ -30,7 +30,7 @@ def render_query_poses(
 
         total = len(poses_data)
         if limit:
-            total = max(limit, total)
+            total = min(limit, total)
 
         print(f"Rendering {total} images ...")
 
