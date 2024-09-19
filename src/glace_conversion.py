@@ -364,48 +364,106 @@ if __name__ == '__main__':
 
     from data import path_to_data
 
-    T_notre_dame = np.array([
+    T_notre_dame_B = np.array([
         [-0.04308, -0.07366, -0.0008805, -1.525],
         [0.0245, -0.01336, -0.08065, 4.145],
         [0.06947, -0.04097, 0.02789, 10.74],
         [0, 0, 0, 1],
     ])
 
-    T_st_peters = np.array([
-        [-0.008938, 0.04505, -4.739e-05, 7.153],
-        [-0.01353, -0.002731, -0.04381, 1.885],
-        [-0.04297, -0.008511, 0.01381, 5.6],
-        [0, 0, 0, 1],
-    ])
-
-    T_pantheon = np.array([
+    T_pantheon_B = np.array([
         [-0.1956, 0.005829, -0.0004737, -0.05305],
         [-0.001383, -0.06151, -0.1857, 5.694],
         [-0.005682, -0.1856, 0.06152, 13.51],
         [0, 0, 0, 1],
     ])
 
+    T_brandenburg_gate_B = np.array([
+        [-0.02426, 0.1181, 0.003819, 0.9054],
+        [-0.03036, -0.002461, -0.1167, 1.876],
+        [-0.1142, -0.02443, 0.03022, 7.294],
+        [0, 0, 0, 1],
+    ])
+
+    T_reichstag_A = np.array([
+        [-0.0004522, -0.06534, 0.0007033, 0.4911],
+        [0.00916, -0.0007597, -0.06469, 1.748],
+        [0.06469, -0.0003491, 0.009164, 12.37],
+        [0, 0, 0, 1],
+    ])
+
+    T_ref = {
+        'notre_dame': T_notre_dame_B,
+        'pantheon': T_pantheon_B,
+        'brandenburg_gate': T_brandenburg_gate_B,
+        'reichstag': T_reichstag_A,
+    }
+
+    cad_models = {
+        'notre_dame': ['notre_dame_B'],
+        'pantheon': ['pantheon_B'],
+        'brandenburg_gate': ['brandenburg_gate_B'],
+        'reichstag': ['reichstag_A'],
+    }
+
+
+    for model in ['notre_dame', 'pantheon', 'brandenburg_gate', 'reichstag']:
+
+        name = model.title().replace('_', ' ')
+        path_to_colmap_model = path_to_data / f'3D Models/{name}/Reference/dense/sparse'
+
+        print(f'Reference model: {name}')
+
+        GlaceConversion(
+            path_to_glace=path_to_data / f'GLACE/{model}',
+            num_test=100,
+        ).generate_from_reconstruction(
+            path_to_nvm=path_to_colmap_model / 'reconstruction.nvm',
+            path_to_images=path_to_colmap_model.parent / 'images',
+            T_sfm_cad=T_ref[model],
+        )
+
+
+        for cad_model in cad_models[model]:
+
+            cad_name = cad_model.replace('_', ' ')
+            path_to_renders = path_to_data / f'Evaluation/{cad_name}/ground truth/renders'
+
+            print(f'- CAD Model: {cad_name}')
+
+            GlaceConversion(
+                path_to_glace=path_to_data / f'GLACE/{cad_model}',
+                num_test=100,
+            )._generate_from_renders(
+                path_to_renders=path_to_renders,
+            )
+
+            # TODO: for models not using the main T_ref, transfer back and forth to same frame
+            # e.g. pantheon_C: transform to coordinates of pantheon_B
+            # coordinates_B = T_B_C * coordinates_C
+            # T_B_C = T_B_sfm * T_sfm_C = (T_sfm_B)^-1 * T_sfm_C
+
 
     # Pantheon
 
-    path_to_renders = path_to_data / 'Evaluation/pantheon B/ground truth/renders'
+    # path_to_renders = path_to_data / 'Evaluation/pantheon B/ground truth/renders'
 
-    path_to_colmap_model = path_to_data / '3D Models/Pantheon/Reference/dense/sparse'
-    path_to_nvm = path_to_colmap_model / 'reconstruction.nvm'
-    path_to_images = path_to_colmap_model.parent / 'images'
+    # path_to_colmap_model = path_to_data / '3D Models/Pantheon/Reference/dense/sparse'
+    # path_to_nvm = path_to_colmap_model / 'reconstruction.nvm'
+    # path_to_images = path_to_colmap_model.parent / 'images'
 
-    GlaceConversion(
-        path_to_glace=path_to_data / f'GLACE/pantheon (SFM)',
-        num_test=100,
-    ).generate_from_reconstruction(
-        path_to_nvm=path_to_nvm,
-        path_to_images=path_to_images,
-        T_sfm_cad=T_pantheon,
-    )
+    # GlaceConversion(
+    #     path_to_glace=path_to_data / f'GLACE/pantheon (SFM)',
+    #     num_test=100,
+    # ).generate_from_reconstruction(
+    #     path_to_nvm=path_to_nvm,
+    #     path_to_images=path_to_images,
+    #     T_sfm_cad=T_pantheon,
+    # )
 
-    GlaceConversion(
-        path_to_glace=path_to_data / f'GLACE/pantheon (renders)',
-        num_test=100,
-    )._generate_from_renders(
-        path_to_renders=path_to_renders,
-    )
+    # GlaceConversion(
+    #     path_to_glace=path_to_data / f'GLACE/pantheon_B',
+    #     num_test=100,
+    # )._generate_from_renders(
+    #     path_to_renders=path_to_renders,
+    # )
