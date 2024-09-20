@@ -50,18 +50,26 @@ class GlaceConversion:
         print(f'Names (train split): {names[n:n+3]} ...')
 
 
+        # existing = 0
+        subpaths = ['rgb', 'calibration', 'poses']
+        if depth_maps: subpaths.append('depth')
+        if scene_coordinates: subpaths.append('init')
+        
         # Create directories
         for split in ['train', 'test']:
             path = self.path_to_glace / split
             if not path.exists(): path.mkdir()
 
-            subpaths = ['rgb', 'calibration', 'poses', 'init']
-            if depth_maps: subpaths.append('depth')
-            if scene_coordinates: subpaths.append('init')
+            # total_split = self.num_test if split=='test' else len(names)-self.num_test
 
             for subpath in subpaths:
                 path = self.path_to_glace / split / subpath
                 if not path.exists(): path.mkdir()
+                # else: existing += int(len([path.glob('*')]) >= total_split)
+            
+        # if existing == 2*len(subpaths):
+        #     print('All files already exist ... skipping conversion.')
+        #     return
 
 
         # Set up frame conversion
@@ -109,17 +117,35 @@ class GlaceConversion:
 
             # Read data from reconstruction file
             line = reconstruction[3 + cam_idx].split()
-            image_file = line[0]
+            image_name = line[0]
             focal_length = float(line[1])
 
-            name = image_file.split('.')[0]
+            name = image_name.split('.')[0]
 
             if self.num_test > 0 and names.index(name) < self.num_test:
                 split = 'test'
             else:
                 split = 'train'
 
-            print(f"{cam_idx + 1} / {num_cams}: {image_file} -> {split}")
+            print(f"{cam_idx + 1} / {num_cams}: {image_name} -> {split}")
+
+            pose_file = self.path_to_glace / split / 'poses' / f'{name}.txt'
+            image_file = self.path_to_glace / split / 'rgb' / image_name
+            intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
+            depth_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
+            coords_file = self.path_to_glace / split / 'init' / f'{name}.dat'
+
+            out_files = [pose_file, image_file, intrinsics_file]
+            if depth_maps: out_files.append(depth_file)
+            if scene_coordinates: out_files.append(coords_file)
+
+            file_existing = 0
+            for file in out_files:
+                file_existing += int(file.exists())
+            if file_existing == len(out_files):
+                print(f'File {name} already exist ... skipping conversion.')
+                continue
+
 
             # POSE
             t_sfm_cam = np.asarray([float(r) for r in line[6:9]])   # camera center in SfM coordinate system
@@ -138,7 +164,6 @@ class GlaceConversion:
             T_cad_cam = conversion.transform_pose_from_colmap_to_cad_format(T_cam_sfm, to_blender_format=False)
             pose_cad_cam = convert_matrix_to_pose(T_cad_cam)
 
-            pose_file = self.path_to_glace / split / 'poses' / f'{name}.txt'
             np.savetxt(pose_file, T_cad_cam, fmt='%15.7e')
 
 
@@ -147,8 +172,7 @@ class GlaceConversion:
 
 
             # IMAGE
-            image = cv.imread(path_to_images / image_file)
-            image_ext = image_file.split('.')[-1]
+            image = cv.imread(path_to_images / image_name)
 
             img_aspect = image.shape[0] / image.shape[1]
 
@@ -166,11 +190,10 @@ class GlaceConversion:
             img_scale = img_w / image.shape[1]
 
             image = cv.resize(image, (img_w, img_h))
-            cv.imwrite(self.path_to_glace / split / 'rgb' / f'{name}.{image_ext}', image)
+            cv.imwrite(image_file, image)
 
 
             # INTRINSICS
-            intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
             with open(intrinsics_file, 'w') as f:
                 f.write(str(focal_length * img_scale))
 
@@ -219,7 +242,6 @@ class GlaceConversion:
 
                     depth_cad = depth_sfm * scale
 
-                    depth_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
                     np.save(depth_file, depth_cad)
                 
                 if scene_coordinates:
@@ -235,7 +257,6 @@ class GlaceConversion:
                     coords_cad = torch.zeros((3, out_h, out_w))
                     coords_cad[:, valid_mask] = coords_cad_valid
 
-                    coords_file = self.path_to_glace / split / 'init' / f'{name}.dat'
                     torch.save(coords_cad, coords_file)
 
 
@@ -258,17 +279,26 @@ class GlaceConversion:
         if n != 0: print(f'Names (test split): {names[:3]} ...')
         print(f'Names (train split): {names[n:n+3]} ...')
 
+
+        # existing = 0
+        subpaths = ['rgb', 'calibration', 'poses']
+        if depth_maps: subpaths.append('depth')
+        
         # Create directories
         for split in ['train', 'test']:
-            path = self.path_to_glace / split / 'depth'
+            path = self.path_to_glace / split
             if not path.exists(): path.mkdir()
 
-            subpaths = ['rgb', 'calibration', 'poses']
-            if depth_maps: subpaths.append('depth')
+            # total_split = self.num_test if split=='test' else len(names)-self.num_test
 
             for subpath in subpaths:
                 path = self.path_to_glace / split / subpath
                 if not path.exists(): path.mkdir()
+                # else: existing += int(len([path.glob('*')]) >= total_split)
+            
+        # if existing == 2*len(subpaths):
+        #     print('All files already exist ... skipping conversion.')
+        #     return
         
 
         total = len(names)
@@ -279,13 +309,28 @@ class GlaceConversion:
 
             print(f"{i + 1} / {total}: {name} -> {split}")
 
+            pose_file = self.path_to_glace / split / 'poses' / f'{name}.txt'
+            image_file = self.path_to_glace / split / 'rgb' / f'{name}.png'
+            intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
+            depth_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
+
+            out_files = [pose_file, image_file, intrinsics_file]
+            if depth_maps: out_files.append(depth_file)
+
+            file_existing = 0
+            for file in out_files:
+                file_existing += int(file.exists())
+            if file_existing == len(out_files):
+                print(f'File {name} already exist ... skipping conversion.')
+                continue
+
+
             # POSE
             pose_cad_cam_blender = np.loadtxt(path_to_renders / 'poses' / f'{name}.txt')
             T_cad_cam_blender = convert_pose_to_matrix(pose_cad_cam_blender)
 
             T_cad_cam = reverse_camera_pose_for_blender(T_cad_cam_blender,'CAD')
 
-            pose_file = self.path_to_glace / split / 'poses' / f'{name}.txt'
             np.savetxt(pose_file, T_cad_cam, fmt='%15.7e')
 
 
@@ -308,7 +353,7 @@ class GlaceConversion:
             img_scale = img_w / image.shape[1]
             
             image = cv.resize(image, (img_w, img_h))
-            cv.imwrite(self.path_to_glace / split / 'rgb' / f'{name}.png', image)
+            cv.imwrite(image_file, image)
 
 
             # INTRINSICS
@@ -324,7 +369,6 @@ class GlaceConversion:
             else:
                 raise NotImplementedError(f"Unit {f_unit} not implemented")
             
-            intrinsics_file = self.path_to_glace / split / 'calibration' / f'{name}.txt'
             with open(intrinsics_file, 'w') as f:
                 f.write(str(focal_length * img_scale))
 
@@ -356,7 +400,6 @@ class GlaceConversion:
                 if to_mm:
                     depth_map_subsampled *= 1000
 
-                depth_file = self.path_to_glace / split / 'depth' / f'{name}.npy'
                 np.save(depth_file, depth_map_subsampled)
 
 
