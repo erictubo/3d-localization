@@ -411,72 +411,70 @@ class Visualization:
         plt.close()
 
 
-    # def compare_scene_coordinate_maps(
-    #         path_to_scene_coordinates_1: Path,
-    #         path_to_scene_coordinates_2: Path,
-    #         path_to_output: Path = None,
-    #         mm_to_m: bool = False,
-    #     ):
-    #     """
-    #     Visualize the pixel-wise difference between two scene coordinate maps.
-    #     Difference = distance between the two points in 3D space
-    #     """
+    def compare_scene_coordinate_maps(
+            path_to_scene_coordinates_1: Path,
+            path_to_scene_coordinates_2: Path,
+            name: str,
+            path_to_output: Path = None,
+        ):
+        """
+        Visualize the pixel-wise difference between two scene coordinate maps.
+        Difference = distance between the two points in 3D space
+        """
         
-    #     def load_coordinates(path_to_scene_coordinates: Path):
-    #         format = path_to_scene_coordinates.suffix[1:]
-    #         if format == 'dat':
-    #             import torch
-    #             coordinates = torch.load(path_to_scene_coordinates)
-    #             # Torch tensor (3, H, W) -> numpy array (H, W, 3)
-    #             coordinates = coordinates.permute(1, 2, 0).numpy()
-    #         else:
-    #             coordinates = np.load(path_to_scene_coordinates)['scene_coordinates']
-    #         mask = np.all(coordinates == [0., 0., 0.], axis=-1)
-    #         return coordinates, mask
+        def load_coordinates(path_to_scene_coordinates: Path):
+            format = path_to_scene_coordinates.suffix[1:]
+            if format == 'dat':
+                import torch
+                coordinates = torch.load(path_to_scene_coordinates)
+                # Torch tensor (3, H, W) -> numpy array (H, W, 3)
+                coordinates = coordinates.permute(1, 2, 0).numpy()
+            else:
+                coordinates = np.load(path_to_scene_coordinates)['scene_coordinates']
+            mask = np.all(coordinates == [0., 0., 0.], axis=-1)
+            return coordinates, mask
         
-    #     coordinates_1, mask_1 = load_coordinates(path_to_scene_coordinates_1)
-    #     coordinates_2, mask_2 = load_coordinates(path_to_scene_coordinates_2)
+        coordinates_1, mask_1 = load_coordinates(path_to_scene_coordinates_1)
+        coordinates_2, mask_2 = load_coordinates(path_to_scene_coordinates_2)
 
-    #     # combine the masks: multiply
-    #     mask = mask_1 | mask_2
+        # combine the masks: multiply
+        mask = mask_1 | mask_2
 
-    #     # Calculate the difference
-    #     difference = np.linalg.norm(coordinates_1 - coordinates_2, axis=-1)
-    #     masked_difference = np.ma.masked_array(difference, mask=mask)
+        # Calculate the difference
+        difference = np.linalg.norm(coordinates_1 - coordinates_2, axis=-1)
+        masked_difference = np.ma.masked_array(difference, mask=mask)
 
-    #     if mm_to_m:
-    #         masked_difference = masked_difference / 1000
-
-    #     cmap = plt.get_cmap('Spectral').reversed()
-    #     cmap.set_bad(color='white')
+        cmap = plt.get_cmap('Spectral').reversed()
+        cmap.set_bad(color='white')
         
-    #     fig, ax = plt.subplots(figsize=(10, 8))
+        fig, ax = plt.subplots(figsize=(10, 8))
 
-    #     # Create a color-coded image of the depth map
-    #     im = ax.imshow(masked_difference, cmap=cmap)
+        # Create a color-coded image of the depth map
+        im = ax.imshow(masked_difference, cmap=cmap)
 
-    #     # Reverse the y-axis
-    #     # ax.invert_yaxis()
+        # Reverse the y-axis
+        # ax.invert_yaxis()
         
-    #     # Add a colorbar
-    #     cbar = fig.colorbar(im, ax=ax)
-    #     cbar.set_label('Distance', rotation=270, labelpad=15)
+        # Add a colorbar
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Distance', rotation=270, labelpad=15)
         
-    #     # ax.set_title('Depth Map Visualization')
+        # ax.set_title('Depth Map Visualization')
 
-    #     # ax.set_xlabel('X')
-    #     # ax.set_ylabel('Y')
-    #     # ax.axis('off')
+        # ax.set_xlabel('X')
+        # ax.set_ylabel('Y')
+        # ax.axis('off')
 
-    #     ax.set_xticks([])
-    #     ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_yticks([])
         
-    #     if not path_to_output:
-    #         plt.show()
-    #     else:
-    #         plt.savefig(path_to_output / f'{name}.png', transparent=True)
-    #     plt.close()
+        if not path_to_output:
+            plt.show()
+        else:
+            plt.savefig(path_to_output / f'{name}.png', transparent=True)
+        plt.close()
 
+        return np.mean(masked_difference)
 
 
 if __name__ == '__main__':
@@ -523,7 +521,7 @@ if __name__ == '__main__':
     # Min coordinates: [-40.0 10.0 2.0]
     # Max coordinates: [18.0 41.0 33.0]
 
-    # COmbined: [-142.0 -109.0 2.0] [111.0 85.0 46.0]
+    # Combined: [-142.0 -109.0 2.0] [111.0 85.0 46.0]
 
     coords_range = (-142, 111), (-109, 85), (2, 46)
 
