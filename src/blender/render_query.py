@@ -10,11 +10,11 @@ from typing import Tuple
 script_directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_directory)
 
-from render import Blender
-from render_data import evaluation_dir
+from renderer import Renderer
+from data import evaluation_dir
 
 def render_query_poses(
-        blender: Blender,
+        renderer: Renderer,
         intrinsics_file: str,
         poses_file: str,
         quaternion_first: bool,
@@ -67,12 +67,12 @@ def render_query_poses(
             print('Pose:', pose)
             print('Intrinsics:', camera_model, w, h, camera_params)
 
-            blender.set_camera_pose(pose)
-            blender.set_camera_intrinsics(w, h, f, 'PIX', cx, cy)
-            blender.set_lighting_pose(pose)
+            renderer.set_camera_pose(pose)
+            renderer.set_camera_intrinsics(w, h, f, 'PIX', cx, cy)
+            renderer.set_lighting_pose(pose)
 
             id = f'query_{name.replace(".jpg", "")}'
-            blender.render(id)
+            renderer.render(id)
 
             print(f"Render {i} / {total} ...")
 
@@ -90,14 +90,14 @@ def main(
         limit: int,
     ) -> None:
 
-    blender = Blender(
+    renderer = Renderer(
         blend_file=blend_file,
         render_dir=render_dir,
         target_name=target_name,
         )
 
     render_query_poses(
-        blender=blender,
+        renderer=renderer,
         intrinsics_file=intrinsics_file,
         poses_file=poses_file,
         quaternion_first=quaternion_first,
@@ -163,7 +163,7 @@ if __name__ == '__main__':
     #     render_ground_truth = False
     #     if render_ground_truth:
 
-    #         blender = Blender(
+    #         renderer = Renderer(
     #             blend_file=blend_file,
     #             render_dir=ground_truth_render_dir,
     #             target_name=target_name,
@@ -180,7 +180,7 @@ if __name__ == '__main__':
     #     render_meshloc = True
     #     if render_meshloc:
 
-    #         blender = Blender(
+    #         renderer = Renderer(
     #             blend_file=blend_file,
     #             render_dir=meshloc_out_render_dir,
     #             target_name=target_name,
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     #             sfm_intrinsics_file = sfm_render_dir + 'intrinsics.txt'
     #             sfm_poses_file = sfm_render_dir + 'poses_cad_cam.txt'
 
-    #             blender = Blender(
+    #             renderer = Renderer(
     #                 blend_file=blend_file,
     #                 render_dir=sfm_render_dir,
     #                 target_name=target_name,

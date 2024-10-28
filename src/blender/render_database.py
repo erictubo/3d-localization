@@ -4,13 +4,14 @@ import os
 script_directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_directory)
 
-from render import Blender
-from render_data import models_dir, renders_dir
+from renderer import Renderer
+from data import models_dir, renders_dir
 
 models = {
-    'Notre Dame': ['B'], #, 'E'],
+    # 'Notre Dame': ['B'], #, 'E'],
     # 'Reichstag': ['A', 'B'], #, 'E'],
     # 'St Peters Square': ['B', 'C']
+    'Pantheon': ['B']
 }
 
 
@@ -25,13 +26,13 @@ for name in models:
 
         render_dir = f'{renders_dir}/{full_name}/'
         
-        blender = Blender(
+        renderer = Renderer(
             blend_file,
             render_dir,
             )
         
         # for f, d in [(30, 110), (60, 220), (120, 440)]:
-        #     blender.render_ground_views(
+        #     renderer.render_ground_views(
         #         distances=[d],
         #         h_steps = 72,
         #         heights = [2, 20, 50],
@@ -72,19 +73,19 @@ for name in models:
         #         for height in heights:
                     
         #             # Wide angle from minimum distance
-        #             blender.render_ground_view(f'test_f{f_wide}_d{d_wide}_z{height}', d_wide, h_angle_deg, height, f_wide, 'MM', 0, 0)
+        #             renderer.render_ground_view(f'test_f{f_wide}_d{d_wide}_z{height}', d_wide, h_angle_deg, height, f_wide, 'MM', 0, 0)
 
         #             # Normal angle from 2x distance
-        #             blender.render_ground_view(f'test_f{f_normal}_d{d_normal}_z{height}', d_normal, h_angle_deg, height, f_normal, 'MM', 0, 0)
+        #             renderer.render_ground_view(f'test_f{f_normal}_d{d_normal}_z{height}', d_normal, h_angle_deg, height, f_normal, 'MM', 0, 0)
 
         #             # Telephoto angle from 4x distance
-        #             blender.render_ground_view(f'test_f{f_tele}_d{d_tele}_z{height}', d_tele, h_angle_deg, height, f_tele, 'MM', 0, 0)
+        #             renderer.render_ground_view(f'test_f{f_tele}_d{d_tele}_z{height}', d_tele, h_angle_deg, height, f_tele, 'MM', 0, 0)
 
 
         #             # Normal angle from minimum distance for detailed views (with offsets)
         #             for v_offset in v_offsets:
         #                 for h_offset in h_offsets:
-        #                     blender.render_ground_view(f'test_f{f_detail}_d{d_detail}_z{height}_dv{v_offset}_dh{h_offset}', d_detail, h_angle_deg, height, f_detail, 'MM', v_offset, h_offset)
+        #                     renderer.render_ground_view(f'test_f{f_detail}_d{d_detail}_z{height}_dv{v_offset}_dh{h_offset}', d_detail, h_angle_deg, height, f_detail, 'MM', v_offset, h_offset)
 
 
         if input('Render all or test? [all/test]') == 'all':
@@ -97,7 +98,7 @@ for name in models:
 
         # Wide from 110m without offsets
         # 1d x 72h x 3z x 1v x 1h = 216 renders
-        blender.render_ground_views(
+        renderer.render_ground_views(
             distances=[d_wide],
             h_steps = h_steps,
             heights = heights,
@@ -108,7 +109,7 @@ for name in models:
 
         # Normal from 220m without offsets
         # 1d x 72h x 3z x 1v x 1h = 216 
-        blender.render_ground_views(
+        renderer.render_ground_views(
             distances=[d_normal],
             h_steps = h_steps,
             heights = heights,
@@ -119,7 +120,7 @@ for name in models:
 
         # Telephoto from 440m without offsets
         # 1d x 72h x 3z x 1v x 1h = 216 renders
-        blender.render_ground_views(
+        renderer.render_ground_views(
             distances=[d_tele],
             h_steps = h_steps,
             heights = heights,
@@ -130,7 +131,7 @@ for name in models:
 
         # Normal from 110m with offsets for detailed views
         # 1d x 72h x 3z x 3v x 3h = 1944 renders
-        blender.render_ground_views(
+        renderer.render_ground_views(
             distances=[d_detail],
             h_steps = h_steps,
             heights = heights,
