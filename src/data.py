@@ -1,6 +1,33 @@
 import os
-
 from pathlib import Path
+
+"""
+Handling of data paths for each reference model and the corresponding CAD models.
+
+Simply set path_to_data and structure the data inside it as follows:
+
+- 3D Models
+    - [Model Name]
+        - Reference
+            - dense
+                - sparse
+                    - cameras.txt / cameras.bin
+                    - images.txt / images.bin
+                    - points3D.txt / points3D.bin
+                - images
+        - [CAD Model ID]
+            - [CAD Model ID].blend
+
+- Evaluation
+    - [Model Name] [CAD Model ID]
+        - ground truth
+            - T_sfm_cad.txt
+        - inputs
+            - database
+            - query
+        - outputs
+
+"""
 
 path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
 
