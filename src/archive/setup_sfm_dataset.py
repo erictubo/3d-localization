@@ -5,7 +5,6 @@ import math
 import os
 
 import cv2 as cv
-from scipy.spatial.transform import Rotation
 from pyquaternion import Quaternion
 import numpy as np
 import torch
@@ -36,8 +35,9 @@ from model_conversion import *
 # - cam_sfm_poses.txt: camera poses in SfM coordinate system
 # - T_sfm_cad.txt: transformation from SfM to realistic CAD coordinate system
 
-
-# TODO: add train / test split (first N images for test if N specified, else N = 0)
+# TODO: make into a function
+# TODO: add option to export depth maps without subsampling, rather than scene coordinates
+# export to /depth/ folder as .npy files in mm
 
 num_test = 100  # number of test images
 target_height = 480  # rescale images
@@ -220,8 +220,6 @@ if __name__ == '__main__':
 
         valid_points = out_tensor[:, valid_mask]
         valid_points_homogeneous = torch.cat([valid_points, torch.ones(1, valid_points.size(1))], dim=0)
-
-        print(valid_points_homogeneous.shape)
 
         transformed_points = torch.mm(T_cad_sfm, valid_points_homogeneous)
         transformed_points = transformed_points[0:3, :]
