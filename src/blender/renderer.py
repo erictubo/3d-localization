@@ -5,8 +5,18 @@ from math import pi, sqrt, tan, asin, atan, atan2
 from mathutils import Vector, Quaternion
 from typing import Dict, Tuple, List, Optional, Union
 
+"""
+Rendered class for rendering images and depth maps from Blender.
 
-class Blender:
+Usage:
+- Initialize Renderer with a blend file and render directory.
+- In the Blender file, make sure the target object is named 'Model' and camera object is named 'Camera'.
+
+A. Run .render_orbit_views() or .render_ground_views() to render images automatically.
+B. Set camera intrinsics and pose, lighting, and call .render() to render an image.
+"""
+
+class Renderer:
 
     def __init__(self,
                  blend_file: str,
@@ -16,7 +26,7 @@ class Blender:
                  default_image_size: 'tuple[int]' = (1024, 1024),
                  default_focal_length_mm: float = 35,
                  depth_rendering: bool = True,
-                 edge_rendering: bool = False,
+                #  edge_rendering: bool = False,
                  images_prefix: str = 'images/',
                  depth_prefix: str = 'depth/',
                  poses_prefix: str = 'poses/',
@@ -65,9 +75,9 @@ class Blender:
         self.camera.rotation_mode = 'QUATERNION'
         self.light.rotation_mode = 'QUATERNION'
 
-        self.get_target_dimensions()
+        self._get_target_dimensions()
 
-        self.distances = self.calculate_distances()
+        self.distances = self._calculate_distances()
 
         print("Distances:", self.distances)
 
@@ -78,11 +88,11 @@ class Blender:
         
         self.depth_rendering = depth_rendering
         if self.depth_rendering:
-            self.prepare_depth_rendering()
+            self._prepare_depth_rendering()
 
-        self.edge_rendering = edge_rendering
-        if self.edge_rendering:
-            self.prepare_edge_rendering()
+        # self.edge_rendering = edge_rendering
+        # if self.edge_rendering:
+        #     self._prepare_edge_rendering()
 
 
     """
@@ -94,7 +104,7 @@ class Blender:
     - ground height
     """
 
-    def get_target_dimensions(self):
+    def _get_target_dimensions(self):
         """
         Find the center of geometry and size of the target object or Empty in global frame.
         """
@@ -154,13 +164,19 @@ class Blender:
             for corner in self.bbox_corners:
                 file.write(f'{corner.x} {corner.y} {corner.z}\n')
     
-    def calculate_distances(self) -> List[int]:
+    def _calculate_distances(self) -> List[int]:
         """
         Calculate distance values for rendering based on target size and diagonal.
         """
         d = np.ceil(self.target_diagonal/2/10)*10
 
         return [d, 2*d]
+    
+    """
+    CONVERSIONS
+    - orbit to pose
+    - pose to orbit
+    """
     
     def convert_orbit_to_pose(self, distance: float, h_angle: float, v_angle: float, unit: str = 'rad') -> np.ndarray:
         """
@@ -331,27 +347,6 @@ class Blender:
         """
         pose = self.convert_orbit_to_pose(distance, h_angle, v_angle, unit)
         self.set_camera_pose(pose)
-        
-        # if unit == 'deg':
-        #     h_angle *= pi/180
-        #     v_angle *= pi/180
-    
-        # h_axis = Vector((0, 0, 1))
-        # h_quat = Quaternion(h_axis, h_angle)
-
-        # v_axis = Vector((0, -1, 0))
-        # v_quat = Quaternion(v_axis, v_angle)
-
-        # combined_quat = h_quat @ v_quat
-
-        # offset = Vector((distance, 0, 0))
-        # rotated_offset = combined_quat @ offset
-        # self.camera.location = self.target_center + rotated_offset
-
-        # direction = self.target_center - self.camera.location
-        # direction.normalize()
-        # quat_to_target = direction.to_track_quat('-Z', 'Y')
-        # self.camera.rotation_quaternion = quat_to_target
 
     def get_camera_orbit_pose(self) -> Tuple[float, float, float]:
         """
@@ -423,7 +418,7 @@ class Blender:
     DEPTH & EDGE RENDERING SET-UP
     """
 
-    def prepare_depth_rendering(self):
+    def _prepare_depth_rendering(self):
         """
         Prepare settings for depth rendering.
         """
@@ -450,50 +445,50 @@ class Blender:
         # Link nodes
         links.new(self.render_layers.outputs['Depth'], self.depth_output.inputs[0])
 
-    def prepare_edge_rendering(self):
-        """
-        Prepare settings for edge rendering.
-        """
-        scene = bpy.context.scene
-        scene.render.use_freestyle = True
-        scene.render.line_thickness_mode = 'ABSOLUTE'
-        scene.render.line_thickness = 1.0
+    # def _prepare_edge_rendering(self):
+    #     """
+    #     Prepare settings for edge rendering.
+    #     """
+    #     scene = bpy.context.scene
+    #     scene.render.use_freestyle = True
+    #     scene.render.line_thickness_mode = 'ABSOLUTE'
+    #     scene.render.line_thickness = 1.0
         
-        # Create Freestyle line set
-        view_layer = bpy.context.view_layer
-        freestyle_settings = view_layer.freestyle_settings
-        lineset = freestyle_settings.linesets.new("LineSet")
-        freestyle_settings.as_render_pass = True
-        lineset.select_silhouette = True
-        lineset.select_border = True
-        lineset.select_crease = True
+    #     # Create Freestyle line set
+    #     view_layer = bpy.context.view_layer
+    #     freestyle_settings = view_layer.freestyle_settings
+    #     lineset = freestyle_settings.linesets.new("LineSet")
+    #     freestyle_settings.as_render_pass = True
+    #     lineset.select_silhouette = True
+    #     lineset.select_border = True
+    #     lineset.select_crease = True
 
-        # Ensure that only the edges are rendered
-        bpy.context.scene.render.film_transparent = True
+    #     # Ensure that only the edges are rendered
+    #     bpy.context.scene.render.film_transparent = True
 
-        # Create output nodes for edge image
-        tree = scene.node_tree
-        links = tree.links
+    #     # Create output nodes for edge image
+    #     tree = scene.node_tree
+    #     links = tree.links
 
-        # Clear existing nodes
-        for node in tree.nodes:
-            if node.label == "Edges Output":
-                tree.nodes.remove(node)
+    #     # Clear existing nodes
+    #     for node in tree.nodes:
+    #         if node.label == "Edges Output":
+    #             tree.nodes.remove(node)
 
-        # Create new render layers node to include Freestyle output
-        freestyle_render_layers = tree.nodes.new(type="CompositorNodeRLayers")
-        freestyle_render_layers.name = "Freestyle Render Layers"
+    #     # Create new render layers node to include Freestyle output
+    #     freestyle_render_layers = tree.nodes.new(type="CompositorNodeRLayers")
+    #     freestyle_render_layers.name = "Freestyle Render Layers"
 
-        # Create a compositor node to output the edges image
-        self.edges_output = tree.nodes.new(type="CompositorNodeOutputFile")
-        self.edges_output.label = "Edges Output"
-        self.edges_output.base_path = self.edges_dir
-        self.edges_output.file_slots[0].path = '####'
-        self.edges_output.format.file_format = 'PNG'
-        self.edges_output.format.color_mode = 'RGBA'
+    #     # Create a compositor node to output the edges image
+    #     self.edges_output = tree.nodes.new(type="CompositorNodeOutputFile")
+    #     self.edges_output.label = "Edges Output"
+    #     self.edges_output.base_path = self.edges_dir
+    #     self.edges_output.file_slots[0].path = '####'
+    #     self.edges_output.format.file_format = 'PNG'
+    #     self.edges_output.format.color_mode = 'RGBA'
 
-        # Link the Freestyle edge pass to the edges output node
-        links.new(freestyle_render_layers.outputs['Freestyle'], self.edges_output.inputs[0])
+    #     # Link the Freestyle edge pass to the edges output node
+    #     links.new(freestyle_render_layers.outputs['Freestyle'], self.edges_output.inputs[0])
 
 
     """
@@ -512,8 +507,8 @@ class Blender:
         
         bpy.context.scene.render.filepath = image_file
 
-        if self.edge_rendering:
-            self.edges_output.file_slots[0].path = id
+        # if self.edge_rendering:
+        #     self.edges_output.file_slots[0].path = id
         
         self.depth_output.file_slots[0].path = id
 
