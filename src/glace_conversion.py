@@ -7,10 +7,14 @@ import torch
 from colmap_model import ColmapModelReader
 from model_conversion import *
 
+"""
+REFERENCE:
+`generate_from_reconstruction` function adapted and generalized from GLACE's `datasets/setup_cambridge.py` script.
+"""
 
 class GlaceConversion:
     """
-    Conversion of data for compatibility with GLACE
+    Conversion of data for compatibility with GLACE Scene Coordinate Regression:
     - Read from (A) CAD renders or (B) SFM reconstruction
         - images
         - intrinsics
