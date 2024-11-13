@@ -1,30 +1,16 @@
 import numpy as np
-from pathlib import Path
 from pyquaternion import Quaternion
-
-from hloc import extract_features, pairs_from_retrieval
-
-from interface_blender import render_query
-from interface_meshloc import run_meshloc
 
 from data import Model, CadModel
 from colmap_model import ColmapModelReader, ColmapModelWriter
 from model_conversion import ModelConversion
 from visualization import Visualization
+from interface_blender import render_query
 
 
 if __name__ == "__main__":
 
-    # model_names = ['Reichstag']
-    # cad_model_ids = ['A', 'B']
-
-    # model_names = ['Notre Dame']
-    # cad_model_ids = ['B']
-
-    # model_names = ['St Peters Square']
-    # cad_model_ids = ['B']
-
-    model_names = ['Pantheon']
+    model_names = ['Pantheon'] # ['Reichstag', 'Notre Dame', 'Brandenburg Gate']
     cad_model_ids = ['B']
 
     # Limit for GT rendering
@@ -45,21 +31,21 @@ if __name__ == "__main__":
             cad_model = CadModel(model, cad_model_id)
 
 
-            # 1. INPUT & GROUND TRUTH CONVERSION
+            # 1. CONVERSION & RENDERING OF COLMAP GROUND TRUTH
             print('1. Input & Ground Truth Conversion...')
             print('   (Requires 3D Registration matrix T_ref)')
 
             colmap_model = ColmapModelReader(model.path_to_reference_model)
             query_names = colmap_model.get_all_image_names()
 
-            # 1.1. Write query intrinsics text file (input)
+            # 1.1. Write query intrinsics text file (input) from COLMAP model
             colmap_model.write_query_intrinsics_text_file(
                 cad_model.path_to_query,
                 query_names,
                 file_name='queries.txt'
             )
 
-            # 1.2. Write query poses text file (ground truth)
+            # 1.2. Write query poses text file (ground truth) from COLMAP model
             colmap_model.write_query_poses_text_file(
                 cad_model.path_to_ground_truth,
                 query_names,
@@ -130,6 +116,8 @@ if __name__ == "__main__":
             print('2. Image Retrieval...')
 
             if input("Retrieve images for MeshLoc? (y/n): ") == 'y':
+
+                from hloc import extract_features, pairs_from_retrieval
 
                 # 2.1. Extract global features
                 cad_model.path_to_global_features = extract_features.main(
