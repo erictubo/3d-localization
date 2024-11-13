@@ -6,7 +6,7 @@ sys.path.append('/Users/eric/Developer/meshloc_release')
 sys.path.append('/Users/eric/Developer')
 
 
-from ...meshloc_release import localize
+from ....meshloc_release import localize
 
 def run_meshloc(
         # colmap_model_dir,
