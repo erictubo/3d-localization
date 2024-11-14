@@ -1,7 +1,6 @@
 import numpy as np
 from pathlib import Path
 from typing import Tuple, Dict, List
-from math import pi
 
 from colmap.read_write_model import *
 
