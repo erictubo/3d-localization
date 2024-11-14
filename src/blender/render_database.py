@@ -8,10 +8,9 @@ from renderer import Renderer
 from data import models_dir, renders_dir
 
 models = {
-    # 'Notre Dame': ['B'], #, 'E'],
-    # 'Reichstag': ['A', 'B'], #, 'E'],
-    # 'St Peters Square': ['B', 'C']
     'Pantheon': ['B']
+    # 'Notre Dame': ['B', 'E'],
+    # 'Reichstag': ['A', 'B'],
 }
 
 
@@ -63,31 +62,6 @@ for name in models:
         v_offsets = [-10, 0, 10]
         h_offsets = [-10, 0, 10]
         
-
-        # if input('Create test renders? [y/n]') == 'y':
-
-        #     h_angles_deg = [135]
-        #     heights = [2, 20, 50]
-
-        #     for h_angle_deg in h_angles_deg:
-        #         for height in heights:
-                    
-        #             # Wide angle from minimum distance
-        #             renderer.render_ground_view(f'test_f{f_wide}_d{d_wide}_z{height}', d_wide, h_angle_deg, height, f_wide, 'MM', 0, 0)
-
-        #             # Normal angle from 2x distance
-        #             renderer.render_ground_view(f'test_f{f_normal}_d{d_normal}_z{height}', d_normal, h_angle_deg, height, f_normal, 'MM', 0, 0)
-
-        #             # Telephoto angle from 4x distance
-        #             renderer.render_ground_view(f'test_f{f_tele}_d{d_tele}_z{height}', d_tele, h_angle_deg, height, f_tele, 'MM', 0, 0)
-
-
-        #             # Normal angle from minimum distance for detailed views (with offsets)
-        #             for v_offset in v_offsets:
-        #                 for h_offset in h_offsets:
-        #                     renderer.render_ground_view(f'test_f{f_detail}_d{d_detail}_z{height}_dv{v_offset}_dh{h_offset}', d_detail, h_angle_deg, height, f_detail, 'MM', v_offset, h_offset)
-
-
         if input('Render all or test? [all/test]') == 'all':
             h_steps = 72
             heights = [2, 20, 50]
