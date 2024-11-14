@@ -16,8 +16,8 @@ This repository implements data generation from 3D models, particularly renderin
     - [Registration between SfM and CAD Model](#registration-between-sfm-and-cad-model)
 
 3. [Usage](#3-usage)
-    - [Main: Rendering Ground Truth Poses from Reconstruction](#main-rendering-ground-truth-poses-from-reconstruction)
-    - [Rendering: Automatic Orbit Poses](#rendering-automatic-orbit-poses)
+    - [Rendering Ground Truth Poses](#rendering-ground-truth-poses)
+    - [Rendering Automatic Poses](#rendering-automatic-poses)
     - [Visualization: Overlays, Depth Maps, Scene Coordinates](#visualization-overlays-depth-maps-scene-coordinates)
     - [Localization with MeshLoc (via ImMatch)](#localization-with-meshloc-via-immatch)
     - [Conversion for Localization with GLACE](#conversion-for-localization-with-glace)
@@ -32,17 +32,16 @@ Required for rendering
 
 - Install Blender from [blender.org](https://www.blender.org/download/) (tested with versions 4.1 and 4.2 LTS)
 
-- Configure Blender task in [.vscode/tasks.json](.vscode/tasks.json): change command to location of Blender executable, e.g. "/snap/bin/blender" for Linux if installed via Snap or find the path by running `which blender` in terminal, to enable Python rendering scripts through Blender directly from VS Code.
+- Configure Blender task in [.vscode/tasks.json](.vscode/tasks.json) to enable Python rendering scripts through Blender directly from VS Code: change command to location of Blender executable, e.g. "/snap/bin/blender" for Linux if installed via Snap or find the path by running `which blender` in terminal.
 
-To run a script with the Blender configuration, open the script in VS Code and press `Cmd/Ctrl + Shift + B`. This is only relevant for the files in the `blender/` directory, particularly [render_database.py](src/blender/render_database.py) for rendering automatic orbit poses, [render_query.py](src/blender/render_query.py) for rendering from COLMAP model poses, and [renderer.py](src/blender/renderer.py) for Blender rendering functions used by the prior two scripts.
+To run a script with the Blender configuration in VS Code, open the script and press `Cmd/Ctrl + Shift + B`. This is only relevant for the files in the `blender/` directory, particularly [render_database.py](src/blender/render_database.py) for rendering automatic poses, [render_query.py](src/blender/render_query.py) for rendering specific poses, and [renderer.py](src/blender/renderer.py) for rendering functions used by the prior two scripts.
 
-The main script [main.py](src/main.py), which needs to use a different Python environment, integrates rendering COLMAP poses via the [interface_blender.py](src/interface_blender.py) script that interfaces with [render_query.py](src/blender/render_query.py) by running a terminal command.
+The main script [main.py](src/main.py), which needs to use a different Python environment, integrates rendering the specified COLMAP poses via the [interface_blender.py](src/interface_blender.py) script that interfaces with [render_query.py](src/blender/render_query.py) by running a terminal command.
 
 ### Python Environment (without MeshLoc)
 
-Create a Python environment with the required dependencies.
-
-(Python 3.8 is used for compatibility with HLoc)
+Create a Python environment with the required dependencies
+(Python 3.8 has been used for compatibility with HLoc)
 
 ```bash
 conda create -n 3d_env python=3.8
@@ -83,12 +82,14 @@ Alternatively, HLoc can be added as a submodule to this repository. If feature e
 We need:
 
 - Real images & reconstructed SfM model as reference
-- CAD models
-- Registration matrix between SfM and CAD model
+- Corresponding CAD model(s)
+- Registration matrix between SfM reconstruction and CAD model
 
 ### Original Datasets
 
-Download [IMC Phototourism](https://www.cs.ubc.ca/research/image-matching-challenge/2021/data/) datasets of reconstructed images from: [https://www.cs.ubc.ca/%7Ekmyi/imw2020/data.html]. Most datasets and registration matrices have been used from [CadLoc](https://github.com/v-pnk/cadloc) / [Datasets](https://v-pnk.github.io/cadloc/datasets.html), which also made use of IMC Phototourism datasets.
+Download [IMC Phototourism](https://www.cs.ubc.ca/research/image-matching-challenge/2021/data/) datasets of reconstructed images from: https://www.cs.ubc.ca/%7Ekmyi/imw2020/data.html
+
+Most datasets and registration matrices have been used from [CadLoc](https://github.com/v-pnk/cadloc) / [Datasets](https://v-pnk.github.io/cadloc/datasets.html), which also made use of IMC Phototourism datasets.
 
 | Dataset (Images + SfM Reconstruction) | # Images | # 3D Points | CAD Model 1 | CAD Model 2 |
 | --- | --- | --- | --- | --- |
@@ -99,13 +100,13 @@ Download [IMC Phototourism](https://www.cs.ubc.ca/research/image-matching-challe
 
 ### Quick Setup
 
-Readily prepared data for the CAD models of the above datasets are available in the [models](models) directory, including:
+Readily prepared data for the CAD models of the above datasets are available in the [models directory](models), including:
 
 - BLEND files for Blender rendering
 - Textures for shading in Blender
 - Registration matrices: `T_ref.txt` (CAD model in the frame of the SfM model)
 
-Images & reconstructions still need to be downloaded from the links in the first column. These are too large to include in the repository and don't need to be reformatted anyways.
+Images & reconstructions still need to be downloaded from the links in the first column. These are too large to include in the repository and don't need to be reformatted anyway.
 
 The next steps can be skipped if using the provided data.
 
@@ -142,13 +143,13 @@ Under CloudCompare > Edit > Transformation > Apply Transformation, select the CA
 
 ## 3. Usage
 
-### Rendering Ground Truth Poses from Reconstruction
+### Rendering Ground Truth Poses
 
-Steps of the main script ([main.py](src/main.py)):
+Steps of the main script ([main.py](src/main.py)) for rendering ground truth poses from an SfM reconstruction:
 
 1. Ground truth conversion and rendering
-2. (Image Retrieval for MeshLoc – requires HLoc)
-3. (Evaluation of MeshLoc results)
+2. Image Retrieval for MeshLoc – requires HLoc (optional)
+3. Evaluation of MeshLoc results (optional)
 
 #### Input
 
@@ -178,7 +179,7 @@ To run [main.py](src/main.py), set `path_to_data` in [data.py](src/data.py) and 
         - outputs
 ```
 
-Where `[Model Name]` is the name of the 3D model, e.g. "Notre Dame", and `[CAD Model ID]` is the ID of the CAD model, e.g. "B" or "E". The `cameras`, `images`, and `points3D` files are from the COLMAP SfM reconstruction, and the `T_sfm_cad.txt` file is the registration matrix (the CAD model in the frame of the SfM model).
+Where `[Model Name]` is the name of the 3D model, e.g. "Notre Dame", and `[CAD Model ID]` is the ID of the CAD model, e.g. "B" or "E". The `cameras`, `images`, and `points3D` files are from the COLMAP SfM reconstruction, and `T_sfm_cad.txt` is the registration matrix (the CAD model in the frame of the SfM model).
 
 #### Output
 
@@ -213,7 +214,7 @@ for f in *; do mv -- "$f" "${f%0001.exr}.exr"; done
 
 #### Image Retrieval for MeshLoc (Optional)
 
-If running the MeshLoc options in the main script (step 2), the following output is also saved:
+Step 2: if running the MeshLoc options in the main script, the following output is also saved:
 
 ```text
 - output/
@@ -226,7 +227,7 @@ Note that this requires HLoc (see installation).
 
 #### Evaluation of Results from MeshLoc (Optional)
 
-See step 4 of [main.py](src/main.py) for evaluation of MeshLoc results.
+See step 4 of [main.py](src/main.py) for evaluation of MeshLoc results. It will generate the following additional outputs:
 
 Step 4.1-4.2: Conversion
 
@@ -250,13 +251,11 @@ Step 4.3: Renders & overlays
         - *.jpg – overlaid query and rendered output pose
 ```
 
-
-### Rendering: Automatic Orbit Poses
+### Rendering Automatic Poses
 
 - [render_database.py](src/blender/render_database.py) – Rendering using automatic orbit poses
 
 - [blender/data.py](src/blender/data.py) to set data paths
-
 
 #### Input
 
@@ -272,9 +271,9 @@ No SfM reconstruction required, only the CAD model:
 
 #### Settings
 
-See `render_orbit_views` or `render_ground_views` in [render_database.py](src/blender/render_database.py)
+See `render_orbit_views()` or `render_ground_views()` in [renderer.py](src/blender/renderer.py)
 
-`render_orbit_views()`: orbit poses around the model with vertical angles specified
+`render_orbit_views()` generates orbit poses around the model with vertical angles specified.
 
 ```python
 h_steps: int,                           # horizontal steps
@@ -284,9 +283,9 @@ focal_lengths: 'list[float]' = [35],    # focal lengths
 f_unit: str = 'MM'                      # focal unit, can be 'MM', 'PIX', or FoV: 'DEG', 'RAD'
 ```
 
-`render_ground_views()`: views around the model at a specific height above ground, with `v_angle` automatically centered to the model.
+`render_ground_views()` generates views around the model at specified heights above the ground, with `v_angle` calculated such that it automatically centers the model.
 
-- This can lead to more realistic poses of poses that are closer to the ground.
+- Can lead to more realistic poses that are closer to the ground rather than aerial views.
 - The offsets can be used to shift the camera position in the horizontal and vertical directions to introduce more variety.
 
 ```python
@@ -299,25 +298,23 @@ v_offsets_deg: 'list[int]' = [0],       # vertical offsets in degrees
 h_offsets_deg: 'list[int]' = [0],       # horizontal offsets in degrees
 ```
 
-
 #### Output
 
-The outputs are saved to the `render_dir`specified in [blender/data.py](src/blender/data.py). By default, this is set to `renders/[Model Name] [CAD Model ID]/`, but could also be set to `evaluation/[Model Name]/[CAD Model ID]/input/database/` for direct use in MeshLoc.
-The format is the same as for the ground truth rendering, with the rendered images, depth maps, intrinsics, and poses saved in separate directories.
+The outputs are saved to the `render_dir` specified in [blender/data.py](src/blender/data.py). By default, this is set to `renders/[Model Name] [CAD Model ID]/`, but could also be set to `evaluation/[Model Name]/[CAD Model ID]/input/database/` for direct use in MeshLoc.
+The format is the same as for the ground truth rendering, with the rendered images, depth maps (EXR), intrinsics, and poses saved in separate directories.
 
 ### Visualization: Overlays, Depth Maps, Scene Coordinates
 
-See [visualization.py](src/visualization.py) for functions to create
+See [visualization.py](src/visualization.py) for functions to:
 
-- overlays of real and rendered images
-- visualizations of depth maps
-- visualizations of scene coordinates
-- compare depth maps – pixelwise distance between real and rendered depth maps
-- compare scene coordinates – pixelwise distance between real and rendered scene coordinates
+- create overlays of real and rendered images
+- visualize depth maps
+- visualize scene coordinates
+- compare depth maps – pixelwise distance between two depth maps
+- compare scene coordinates – pixelwise distance between two scene coordinate maps
 
 Examples that have been tested are included at the end of the file in the `if __name__ == "__main__":` block.
 In `visualize_depth_map()` and `visualize_scene_coordinate_map()`, some settings can be used to make the color maps uniform across different depth maps or scene coordinates (e.g. `depth_range` or `x_range`, `y_range`, `z_range`).
-
 
 ### Localization with MeshLoc (via ImMatch)
 
@@ -336,7 +333,7 @@ To run MeshLoc:
 
 2. Install MeshLoc: [MeshLoc](https://github.com/tsattler/meshloc_release)
 
-#### Input
+#### MeshLoc Input
 
 (automatically generated by the main script with MeshLoc setup)
 
@@ -359,7 +356,9 @@ The following data is required by MeshLoc:
         - *.npy – local feature matches for each query-database pair
 ```
 
-#### Settings
+Place any images to-be-localized in the `query/images` directory. The intrinsics (format: `image_name camera_model w h fx fy cx cy`) of all images from the reconstruction are saved in `queries.txt` (created by the main script). The name of the query image is used to look up the corresponding intrinsics.
+
+#### MeshLoc Settings
 
 - K for number of top matches to use: e.g. 25
 - Method: e.g. patch2pix
@@ -391,7 +390,7 @@ python ../meshloc_release/localize.py \
 --cluster_keypoints
 ```
 
-#### Output
+#### MeshLoc Output
 
 Will be saved to the `meshloc_out` directory:
 
@@ -469,7 +468,6 @@ Reading data based on sorted sequence, not by looking up filenames
 GLACE will use this data to train a scene-specific prediction head `<scene>.pt`
 
 See the [GLACE](https://github.com/cvg/glace) or [GLACE-3D](https://github.com/erictubo/glace-3d) repository for more details.
-
 
 ## 4. Files Overview
 
