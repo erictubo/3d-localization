@@ -19,7 +19,7 @@ for name in models:
     for id in models[name]:
 
         print(f'Model: {name} / {id}')
-        full_name = (name.lower() + ' ' + id) # e.g. notre dame B
+        full_name = (name + ' ' + id) # e.g. Notre Dame B
 
         blend_file = f'{models_dir}/{name}/{id}/{full_name}.blend'
         assert os.path.exists(blend_file), f"Blend file not found: {blend_file}"

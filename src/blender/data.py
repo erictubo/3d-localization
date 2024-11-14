@@ -1,10 +1,9 @@
+import os
 
-# Ubuntu
-# data_dir = '/home/johndoe/Documents/data/'
+user = os.getlogin()
 
-# macOS
-data_dir = '/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/'
+data_dir = '/home/'+user+'/Documents/data'
 
-evaluation_dir = data_dir + 'Evaluation/'
-models_dir = data_dir + '3D Models/'
-renders_dir = data_dir + 'Renders/'
+evaluation_dir = data_dir + '/evaluation'
+models_dir = data_dir + '/models'
+renders_dir = data_dir + '/renders'
