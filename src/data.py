@@ -6,7 +6,7 @@ Handling of data paths for each reference model and the corresponding CAD models
 
 Simply set path_to_data and structure the data inside it as follows:
 
-- 3D Models
+- models
     - [Model Name]
         - Reference
             - dense
@@ -18,7 +18,7 @@ Simply set path_to_data and structure the data inside it as follows:
         - [CAD Model ID]
             - [CAD Model ID].blend
 
-- Evaluation
+- evaluation
     - [Model Name] [CAD Model ID]
         - ground truth
             - T_sfm_cad.txt
@@ -28,10 +28,13 @@ Simply set path_to_data and structure the data inside it as follows:
         - outputs
 """
 
-path_to_data = Path('/Users/eric/Documents/Studies/MSc Robotics/Thesis/Data/')
+user = os.getlogin()
 
-path_to_models = path_to_data / '3D Models/'
-path_to_evaluation = path_to_data / 'Evaluation/'
+
+path_to_data = Path(f'/home/{user}/Documents/data/')
+
+path_to_models = path_to_data / 'models/'
+path_to_evaluation = path_to_data / 'evaluation/'
 
 
 class Model:
@@ -63,7 +66,7 @@ class CadModel:
         self.model = model
         self.id = id.upper()
         print(f'CAD Model: {self.model.name} {self.id}')
-        self.prefix = f'{self.model.name.lower()} {id}' # e.g. notre dame B
+        self.prefix = f'{self.model.name} {id}' # e.g. Notre Dame B
         
         self.blend_file = path_to_models / model.name / self.id / f'{self.prefix}.blend'
         assert os.path.exists(self.blend_file), f"Blend file not found: {self.blend_file}"
