@@ -19,10 +19,8 @@ if __name__ == "__main__":
     # Number of matches for image retrieval (MeshLoc)
     num_matched = 25
 
-    # Format to convert depth maps and scene coodinates to:
+    # Format to convert depth maps and scene coordinates to (CAD or SFM)
     format_depth = 'CAD' # 'SFM'
-    # TODO: option 1: only depth maps in SFM format (MeshLoc) / option 2: both in CAD format (GLACE)
-
 
     for model_name in model_names:
         model = Model(model_name)
