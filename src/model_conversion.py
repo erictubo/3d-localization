@@ -1,3 +1,7 @@
+"""
+Coordinate frame and data format conversion utilities for CAD and SfM (COLMAP) models.
+Includes pose/frame transformations and depth/scene coordinate conversions.
+"""
 import numpy as np
 from math import pi
 from pathlib import Path
@@ -151,8 +155,13 @@ class ModelConversion:
             to_blender_format: bool,
             ) -> np.ndarray:
         """
-        Transform pose in COLMAP to CAD format.
-        Optional: reverse pose to Blender format (camera facing -z direction).
+        Transforms a camera pose from COLMAP (SfM) format to CAD model format.
+        Optionally applies a rotation to match Blender's camera convention.
+        Args:
+            pose_cam_sfm (np.ndarray): Camera pose in COLMAP format.
+            to_blender_format (bool): If True, rotate pose to Blender's camera convention.
+        Returns:
+            np.ndarray: Transformed camera pose in CAD format.
         """
 
         # SFM in CAM frame
@@ -416,7 +425,9 @@ class ModelConversion:
 
     def convert_depth_maps_from_exr_to_npz(self, format: str):
         """
-        Convert all EXR depth maps to NPZ format.
+        Converts all EXR depth maps in the dataset to compressed NPZ format.
+        Args:
+            format (str): 'cad' for CAD scale, 'sfm' for SFM scale (affects depth scaling).
         """
         if format.lower() == 'cad':
             scale = None

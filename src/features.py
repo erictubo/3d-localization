@@ -1,3 +1,7 @@
+"""
+Feature extraction and matching for MeshLoc using HLoc.
+Defines the Features class for global/local feature extraction, matching, and visualization.
+"""
 from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.patches import ConnectionPatch

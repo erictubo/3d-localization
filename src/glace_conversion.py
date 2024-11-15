@@ -1,3 +1,7 @@
+"""
+Data conversion utilities for GLACE scene coordinate regression.
+Handles conversion from CAD renders or SfM reconstructions to GLACE-compatible format.
+"""
 from pathlib import Path
 from typing import List
 import numpy as np

@@ -1,3 +1,7 @@
+"""
+Visualization utilities for overlays, depth maps, and scene coordinates.
+Provides static methods for visualizing and comparing rendered and real data.
+"""
 import numpy as np
 from typing import Tuple
 from pathlib import Path
@@ -6,6 +10,10 @@ import matplotlib.pyplot as plt
 
 
 class Visualization:
+    """
+    Static methods for visualizing overlays, depth maps, and scene coordinates.
+    Includes utilities for comparing rendered and real data, and for generating evaluation plots.
+    """
 
     def __init__(self):
         pass
@@ -18,7 +26,17 @@ class Visualization:
             tiles: Tuple[int, int] = None,
             tiles_pix: Tuple[int, int] = (160, 160),
         ):
-
+        """
+        Creates a checkerboard overlay of a query image and a rendered image for visual comparison.
+        Args:
+            query_image (Image): The real/query image.
+            render_image (Image): The rendered image.
+            subsample (int): Downsampling factor for the images.
+            tiles (Tuple[int, int], optional): Number of tiles in (width, height). If None, uses tiles_pix.
+            tiles_pix (Tuple[int, int]): Size of each tile in pixels.
+        Returns:
+            Image: The combined overlay image.
+        """
         # check that subsample is a power of 2
         assert subsample & (subsample - 1) == 0, 'Subsample must be a power of 2'
 
@@ -307,10 +325,15 @@ class Visualization:
             mm_to_m: bool = False,
     ):
         """
-        Visualize the pixel-wise difference between two depth maps.
-        Difference = absolute difference between the two depth values
+        Visualizes the pixel-wise absolute difference between two depth maps.
+        Useful for evaluating the accuracy of predicted or rendered depth maps.
+        Args:
+            path_to_depth_1 (Path): Path to the first depth map file.
+            path_to_depth_2 (Path): Path to the second depth map file.
+            name (str): Output filename prefix.
+            path_to_output (Path, optional): Directory to save the output image. If None, displays the image.
+            mm_to_m (bool): If True, converts depth values from millimeters to meters.
         """
-
         def load_depth_map(path_to_depth: Path):
             format = path_to_depth.suffix[1:]
             if format == 'npz':
@@ -418,8 +441,13 @@ class Visualization:
             path_to_output: Path = None,
         ):
         """
-        Visualize the pixel-wise difference between two scene coordinate maps.
-        Difference = distance between the two points in 3D space
+        Visualizes the pixel-wise Euclidean distance between two scene coordinate maps.
+        Useful for comparing predicted and ground truth scene coordinates.
+        Args:
+            path_to_scene_coordinates_1 (Path): Path to the first scene coordinate map.
+            path_to_scene_coordinates_2 (Path): Path to the second scene coordinate map.
+            name (str): Output filename prefix.
+            path_to_output (Path, optional): Directory to save the output image. If None, displays the image.
         """
         
         def load_coordinates(path_to_scene_coordinates: Path):

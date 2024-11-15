@@ -1,3 +1,7 @@
+"""
+Main pipeline for rendering, data conversion, and evaluation for 3D localization.
+Handles ground truth rendering, feature extraction, and evaluation steps.
+"""
 import numpy as np
 from pyquaternion import Quaternion
 

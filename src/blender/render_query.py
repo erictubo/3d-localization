@@ -1,3 +1,7 @@
+"""
+Blender script for rendering images from specific query poses and intrinsics.
+Used for rendering ground truth or predicted camera poses from COLMAP or localization output.
+"""
 import bpy
 import sys
 import os

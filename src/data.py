@@ -1,3 +1,7 @@
+"""
+Data structure and path management for 3D models and evaluation datasets.
+Defines Model and CadModel classes for handling paths and dataset structure.
+"""
 import os
 from pathlib import Path
 
@@ -38,7 +42,9 @@ path_to_evaluation = path_to_data / 'evaluation/'
 
 
 class Model:
-
+    """
+    Represents a reference 3D model and provides access to its COLMAP reconstruction and images.
+    """
     def __init__(self, name: str):
         self.name = name.title()
         print(f'Model: {self.name}')
@@ -48,8 +54,10 @@ class Model:
 
 
 class CadModel:
-
     """
+    Represents a CAD model variant of a reference model, managing paths for ground truth, inputs, and outputs.
+    Handles dataset structure for evaluation and rendering tasks.
+
     Dataset file structure:
     - ground truth
         - 

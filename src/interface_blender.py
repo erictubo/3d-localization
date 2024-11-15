@@ -1,3 +1,7 @@
+"""
+Python interface for running Blender rendering scripts from the main pipeline.
+Defines functions to call Blender with specific scripts and arguments for rendering.
+"""
 import subprocess
 import sys
 from typing import List

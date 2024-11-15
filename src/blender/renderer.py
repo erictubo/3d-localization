@@ -1,3 +1,7 @@
+"""
+Blender rendering utilities for CAD models.
+Defines the Renderer class for rendering images, depth maps, and poses from Blender scenes.
+"""
 import bpy
 import os
 import numpy as np
@@ -106,7 +110,9 @@ class Renderer:
 
     def _get_target_dimensions(self):
         """
-        Find the center of geometry and size of the target object or Empty in global frame.
+        Computes and sets the target object's center, size, diagonal, bounding box corners, and ground height.
+        These attributes are used for camera placement and rendering logic.
+        Modifies: self.target_center, self.target_size, self.target_diagonal, self.bbox_corners, self.ground_height.
         """
         obj = self.target
         
@@ -180,7 +186,14 @@ class Renderer:
     
     def convert_orbit_to_pose(self, distance: float, h_angle: float, v_angle: float, unit: str = 'rad') -> np.ndarray:
         """
-        Convert orbit view parameters to camera pose.
+        Converts orbit parameters (distance, horizontal angle, vertical angle) to a camera pose in 3D space.
+        Args:
+            distance (float): Distance from the target center.
+            h_angle (float): Horizontal angle (in radians or degrees).
+            v_angle (float): Vertical angle (in radians or degrees).
+            unit (str): Unit for angles ('rad' or 'deg').
+        Returns:
+            np.ndarray: Camera pose as [px, py, pz, qw, qx, qy, qz].
         """
         if unit == 'deg':
             h_angle *= pi/180
@@ -420,7 +433,8 @@ class Renderer:
 
     def _prepare_depth_rendering(self):
         """
-        Prepare settings for depth rendering.
+        Sets up Blender's compositor nodes for depth rendering.
+        Enables depth pass and configures output to save depth maps as EXR files in the depth directory.
         """
         view_layer = bpy.context.scene.view_layers[0]
         view_layer.use_pass_z = True
@@ -497,7 +511,11 @@ class Renderer:
     
     def render(self, id: str):
         """
-        Render images (+ depth and edges if enabled), save camera pose and depth values.
+        Renders an image (and depth map if enabled) for the current camera pose.
+        Saves the image, depth map, camera pose, and intrinsics to the appropriate directories.
+        Skips rendering if the image already exists.
+        Args:
+            id (str): Identifier for the output files (used as filename prefix).
         """
         image_file = os.path.join(self.images_dir, f'{id}.png')
 

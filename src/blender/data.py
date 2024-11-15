@@ -1,3 +1,7 @@
+"""
+Blender data paths setup.
+Defines user-specific data, evaluation, models, and renders directories for Blender scripts.
+"""
 import os
 
 user = os.getlogin()

@@ -1,3 +1,7 @@
+"""
+Blender batch rendering script for automatic database view generation.
+Renders multiple views of CAD models using different camera settings and saves outputs.
+"""
 import sys
 import os
 
