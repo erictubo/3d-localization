@@ -14,42 +14,43 @@ Generate synthetic training data for visual localization by rendering CAD models
 
 This repository is part of my [Master Thesis](https://github.com/erictubo/Master-Thesis) about visual localization against 3D models (see project page for report and presentation). The second component is [GLACE-3D](https://github.com/erictubo/glace-3d), a separate repository that adapts scene coordinate regression to 3D models (via supervised training against known scene coordinates and transfer learning for domain adaptation across real and synthetic data). Synthetic data generated from this repository is used for training GLACE-3D.
 
-**Automatic Orbit Renders:** Images, depth maps, and scene coordinates
-
-![automatic rendering](/preview/automatic_rendering.png)
-
-**Overlays:** rendered SfM ground truth poses vs. real images
-
-![overlays](/preview/overlays.png)
-(accuracy limited by CAD model quality, SfM reconstruction, and CAD-SfM registration)
-
-**Contents:**
-
-1. [Installation](#1-installation)
+### Contents
+1. [Visual Overview](#1-visual-overview)
+2. [Installation](#2-installation)
     - [Blender](#blender)
     - [Python Environment (without MeshLoc)](#python-environment-without-meshloc)
     - [Python Environment (for MeshLoc)](#python-environment-for-meshloc)
-
-2. [Datasets](#2-datasets)
+3. [Datasets](#3-datasets)
     - [Original Datasets](#original-datasets)
     - [Quick Setup](#quick-setup)
     - [CAD Model Setup in Blender](#cad-model-setup-in-blender)
     - [Registration between SfM and CAD Model](#registration-between-sfm-and-cad-model)
-
-3. [Usage](#3-usage)
+4. [Usage](#4-usage)
     - [Rendering Ground Truth Poses](#rendering-ground-truth-poses)
     - [Rendering Automatic Poses](#rendering-automatic-poses)
     - [Visualization: Overlays, Depth Maps, Scene Coordinates](#visualization-overlays-depth-maps-scene-coordinates)
     - [Localization with MeshLoc (via ImMatch)](#localization-with-meshloc-via-immatch)
     - [Conversion for Localization with GLACE](#conversion-for-localization-with-glace)
+5. [Files Overview](#5-files-overview)
+6. [Testing](#6-testing)
+7. [Acknowledgments](#7-acknowledgments)
 
-4. [Files Overview](#4-files-overview)
+## 1. Visual Overview
 
-5. [Testing](#testing)
+### Rendering Pipeline
 
-6. [Acknowledgments](#acknowledgments)
+**Automatic Orbit Renders:** Images, depth maps, and scene coordinates
 
-## 1. Installation
+![automatic rendering](./visuals/automatic_rendering.png)
+
+### Visualization
+
+**Overlays:** Rendered SfM ground truth poses vs. real images
+
+![overlays](./visuals/overlays.png)
+(accuracy limited by CAD model quality, SfM reconstruction, and CAD-SfM registration)
+
+## 2. Installation
 
 Install Blender and Python environment with dependencies.
 
@@ -104,7 +105,7 @@ pip install pyquaternion transformations openexr
 
 Alternatively, HLoc can be added as a submodule to this repository. If feature extraction for MeshLoc is not used, HLoc is not required.
 
-## 2. Datasets
+## 3. Datasets
 
 For each dataset, we need:
 
@@ -168,7 +169,7 @@ Using CloudCompare:
 
 Under CloudCompare > Edit > Transformation > Apply Transformation, select the CAD model and apply the transformation matrix to align the CAD model with the SfM reference.
 
-## 3. Usage
+## 4. Usage
 
 Rendering options include ground truth poses from the SfM reconstruction and automatic poses around the model. Outputs can be visualized and converted for localization with MeshLoc or GLACE.
 
@@ -489,13 +490,15 @@ Blender coordinate frame with camera looking in -Z, so they are automatically re
 In both cases, the output is saved to the `path_to_glace` directory:
 
 ```text
-- test/
-    - calibration/*.txt – intrinsics (camera matrix format)
-    - poses/*.txt – poses (transformation matrix format)
-    - rgb/*.png – images
-    - features.npy – global features extracted via R2Former
-- train/
-    - "
+<path_to_glace>/
+├── train/
+│   ├── calibration/*.txt    # Camera intrinsics (matrix)
+│   ├── depth/*.npy          # Depth maps
+│   ├── init/*.dat           # Initialization targets (sparse MVS)
+│   ├── poses/*.txt          # Camera poses (matrix)
+│   └── rgb/*.png            # Rendered images
+└── test/
+    └── ...
 ```
 
 Reading data based on sorted sequence, not by looking up filenames
@@ -504,7 +507,7 @@ GLACE will use this data to train a scene-specific prediction head `<scene>.pt`
 
 See the [GLACE](https://github.com/cvg/glace) or [GLACE-3D](https://github.com/erictubo/glace-3d) repository for more details.
 
-## 4. Files Overview
+## 5. Files Overview
 
 ### Main Files
 
@@ -542,11 +545,11 @@ Run these files using the Blender configuration in [.vscode/tasks.json](.vscode/
 | --- | --- |
 | [colmap/read_write_model.py](src/colmap/read_write_model.py) | Reading and writing COLMAP model files (copied from COLMAP repository) |
 
-## 5. Testing
+## 6. Testing
 
 Correctness in this project is primarily verified through visualization of outputs (e.g., overlays, depth maps, scene coordinates) and runtime assertions that check data shapes and file existence. Due to the nature of 3D rendering and data generation, traditional unit tests are not used, as outputs are best evaluated visually rather than by exact values.
 
-## 6. Acknowledgments
+## 7. Acknowledgments
 
 - [MeshLoc](https://github.com/tsattler/meshloc_release) for the localization pipeline
 - [GLACE](https://github.com/cvg/glace) for scene coordinate regression
