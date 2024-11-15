@@ -1,6 +1,6 @@
-# 3D Localization: Visual Localization against 3D models
+# 3D Localization: Data Generation from 3D Models for Visual Localization
 
-This repository implements data generation from 3D models, particularly rendering CAD meshes in Blender and reading from COLMAP SFM models, as well as data conversion for localization pipelines MeshLoc and GLACE.
+This repository implements data generation from 3D models, particularly rendering CAD meshes in Blender and reading from COLMAP SFM models, as well as data conversion for localization pipelines [MeshLoc](https://github.com/tsattler/meshloc_release), [GLACE](https://github.com/cvg/glace) and my adaptation [GLACE-3D](https://github.com/erictubo/glace-3d).
 
 **Contents:**
 
