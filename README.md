@@ -1,6 +1,27 @@
-# 3D Localization: Data Generation from 3D Models for Visual Localization
+# 3D Localization: Synthetic Data Generation from CAD Models for Visual Localization
 
-This repository implements data generation from 3D models, particularly rendering CAD meshes in Blender and reading from COLMAP SFM models, as well as data conversion for localization pipelines [MeshLoc](https://github.com/tsattler/meshloc_release), [GLACE](https://github.com/cvg/glace) and my adaptation [GLACE-3D](https://github.com/erictubo/glace-3d).
+[![Python 3.8](https://img.shields.io/badge/python-3.8-blue.svg)](https://www.python.org/downloads/release/python-380/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Blender](https://img.shields.io/badge/Blender-4.1%2B-orange.svg)](https://www.blender.org/)
+
+Generate synthetic training data for visual localization by rendering CAD models in Blender. This repository provides tools for:
+
+1. Rendering images, depth maps, and scene coordinates from CAD models
+    - Ground truth poses from SfM reconstruction
+    - Automatic orbit poses around the model
+2. Visualizing generated data (depth maps, scene coordinates) and comparing with ground truth data (overlays)
+3. Reading and converting between different data formats (COLMAP, [MeshLoc](https://github.com/tsattler/meshloc_release), [GLACE](https://github.com/cvg/glace)) for localization pipelines
+
+This repository is part of my [Master Thesis](https://github.com/erictubo/Master-Thesis) about visual localization against 3D models (see project page for report and presentation). The second component is [GLACE-3D](https://github.com/erictubo/glace-3d), a separate repository that adapts scene coordinate regression to 3D models (via supervised training against known scene coordinates and transfer learning for domain adaptation across real and synthetic data). Synthetic data generated from this repository is used for training GLACE-3D.
+
+**Automatic Orbit Renders:** Images, depth maps, and scene coordinates
+
+![automatic rendering](/preview/automatic_rendering.png)
+
+**Overlays:** rendered SfM ground truth poses vs. real images
+
+![overlays](/preview/overlays.png)
+(accuracy limited by CAD model quality, SfM reconstruction, and CAD-SfM registration)
 
 **Contents:**
 
@@ -24,7 +45,13 @@ This repository implements data generation from 3D models, particularly renderin
 
 4. [Files Overview](#4-files-overview)
 
+5. [Testing](#testing)
+
+6. [Acknowledgments](#acknowledgments)
+
 ## 1. Installation
+
+Install Blender and Python environment with dependencies.
 
 ### Blender
 
@@ -79,13 +106,13 @@ Alternatively, HLoc can be added as a submodule to this repository. If feature e
 
 ## 2. Datasets
 
-We need:
+For each dataset, we need:
 
-- Real images & reconstructed SfM model as reference
+- Real images & SfM reconstruction as reference
 - Corresponding CAD model(s)
 - Registration matrix between SfM reconstruction and CAD model
 
-### Original Datasets
+### Original Datasets: Images & SfM Reconstruction
 
 Download [IMC Phototourism](https://www.cs.ubc.ca/research/image-matching-challenge/2021/data/) datasets of reconstructed images from: https://www.cs.ubc.ca/%7Ekmyi/imw2020/data.html
 
@@ -142,6 +169,14 @@ Using CloudCompare:
 Under CloudCompare > Edit > Transformation > Apply Transformation, select the CAD model and apply the transformation matrix to align the CAD model with the SfM reference.
 
 ## 3. Usage
+
+Rendering options include ground truth poses from the SfM reconstruction and automatic poses around the model. Outputs can be visualized and converted for localization with MeshLoc or GLACE.
+
+- [Rendering Ground Truth Poses](#rendering-ground-truth-poses)
+- [Rendering Automatic Poses](#rendering-automatic-poses)
+- [Visualization: Overlays, Depth Maps, Scene Coordinates](#visualization-overlays-depth-maps-scene-coordinates)
+- [Localization with MeshLoc (via ImMatch)](#localization-with-meshloc-via-immatch)
+- [Conversion for Localization with GLACE](#conversion-for-localization-with-glace)
 
 ### Rendering Ground Truth Poses
 
@@ -471,7 +506,7 @@ See the [GLACE](https://github.com/cvg/glace) or [GLACE-3D](https://github.com/e
 
 ## 4. Files Overview
 
-### Main files
+### Main Files
 
 | File | Description |
 | --- | --- |
@@ -483,13 +518,13 @@ See the [GLACE](https://github.com/cvg/glace) or [GLACE-3D](https://github.com/e
 | [model_conversion.py](src/model_conversion.py) | Conversion between coordinate frames of CAD and COLMAP models, between data formats (e.g. depth maps) |
 | [visualization.py](src/visualization.py) | Visualization functions for overlays, depth maps, and scene coordinates |
 
-### Interface files
+### Interface Files
 
 | File | Description |
 | --- | --- |
 | [interface_blender.py](src/interface_blender.py) | Blender interface for rendering, used by [main.py](src/main.py) for rendering of COLMAP poses |
 
-### Blender files
+### Blender Files
 
 Run these files using the Blender configuration in [.vscode/tasks.json](.vscode/tasks.json). In VS Code, once the task is configured, this can be done by pressing `Cmd/Ctrl + Shift + B`.
 
@@ -501,8 +536,18 @@ Run these files using the Blender configuration in [.vscode/tasks.json](.vscode/
 | [blender/data.py](src/blender/data.py) | Data paths |
 | [.vscode/tasks.json](.vscode/tasks.json) | Task definition for Blender rendering |
 
-### COLMAP files
+### COLMAP Files
 
 | File | Description |
 | --- | --- |
 | [colmap/read_write_model.py](src/colmap/read_write_model.py) | Reading and writing COLMAP model files (copied from COLMAP repository) |
+
+## 5. Testing
+
+Correctness in this project is primarily verified through visualization of outputs (e.g., overlays, depth maps, scene coordinates) and runtime assertions that check data shapes and file existence. Due to the nature of 3D rendering and data generation, traditional unit tests are not used, as outputs are best evaluated visually rather than by exact values.
+
+## 6. Acknowledgments
+
+- [MeshLoc](https://github.com/tsattler/meshloc_release) for the localization pipeline
+- [GLACE](https://github.com/cvg/glace) for scene coordinate regression
+- [COLMAP](https://github.com/colmap/colmap) for SfM reconstruction
